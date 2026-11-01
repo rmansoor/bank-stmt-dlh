@@ -26,6 +26,9 @@ def build_silver(pdf_dir: Path, password: str) -> tuple[pd.DataFrame, pd.DataFra
         stmt_rows.append(
             {
                 "file": pdf.name,
+                "account_type": st.account_type,
+                "currency": st.currency,
+                "account_id": st.account_id,
                 "file_sha256": sha256(pdf),
                 "period_from": pd.to_datetime(st.period_from, format="%d/%m/%Y"),
                 "period_to": pd.to_datetime(st.period_to, format="%d/%m/%Y"),
@@ -44,11 +47,15 @@ def build_silver(pdf_dir: Path, password: str) -> tuple[pd.DataFrame, pd.DataFra
             continue  # quarantine: never load an unreconciled statement
         df = pd.DataFrame(st.txns)
         df["source_file"] = pdf.name
+        df["account_type"] = st.account_type
+        df["currency"] = st.currency
         txn_frames.append(df)
     stmts = pd.DataFrame(stmt_rows)
     if not txn_frames:
         return pd.DataFrame(), stmts
     txns = pd.concat(txn_frames, ignore_index=True)
+    if txns["currency"].nunique() != 1 or txns["account_type"].nunique() != 1:
+        raise SystemExit("Use separate folders for bank statements and credit cards, and for each currency")
     txns["txn_date"] = pd.to_datetime(txns["txn_date"], format="%d/%m/%y")
     txns["value_date"] = pd.to_datetime(txns["value_date"], format="%d/%m/%y")
     txns["amount"] = txns["amount"].astype(float)
@@ -65,6 +72,8 @@ def main() -> None:
     if not find_pdfs(pdf_dir):
         raise SystemExit(f"no PDF in {pdf_dir} (set STATEMENTS_DIR)")
     txns, stmts = build_silver(pdf_dir, password)
+    if txns.empty:
+        raise SystemExit("No reconciled transactions; output was not changed. " + "; ".join(stmts["errors"].astype(str)))
     out = ROOT / "data" / "silver"
     out.mkdir(parents=True, exist_ok=True)
     stmts.to_parquet(out / "statements.parquet", index=False)

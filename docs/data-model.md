@@ -48,3 +48,13 @@ Views in `databricks/sql/20_gold_views.sql`, all plain SQL: `monthly_flow`, `mon
 For each statement, the parser recomputes from the rows: debit count, credit count, debit total, credit total and
 the last running balance, and compares them with the bank's STATEMENT SUMMARY. Direction of each row comes from
 the change in running balance. Any mismatch, including a balance break between two rows, quarantines the file.
+
+## Local Wells Fargo credit cards
+
+Local statements and transactions include `account_type`, `currency` and an opaque `account_id`.
+Card transactions add `activity_type`, `identity_occurrence`, and a nullable `balance` (the PDF has no
+running transaction balance). `value_date` is the posting date; `txn_date` is the purchase/activity date.
+Card identity uses account, currency, both dates, reference, amount, direction, activity type and
+occurrence number. This preserves repeated transactions and deduplicates repeated statement copies.
+Card `credit` rows reduce debt; `debit` rows increase it. Statement closing balances are amounts owed,
+not cash available. Local card views replace bank cash-flow views; cloud schemas are unchanged.

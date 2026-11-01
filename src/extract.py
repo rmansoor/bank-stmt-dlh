@@ -1,4 +1,4 @@
-"""Bronze to silver: parse HDFC current account statement PDFs into transactions.
+"""Parse supported HDFC bank and Wells Fargo credit card statement PDFs.
 
 Deterministic. Direction comes from the running balance, and every statement is
 reconciled against the bank's own STATEMENT SUMMARY before it is accepted.
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pdfplumber
 
-PARSER_VERSION = "1.2"
+PARSER_VERSION = "1.3"
 
 TXN_START = re.compile(
     r"^(\d{2}/\d{2}/\d{2})\s+(.*?)\s*(\d{10,20})\s+(\d{2}/\d{2}/\d{2})\s+"
@@ -32,6 +32,10 @@ def _money(s: str) -> Decimal:
 @dataclass
 class Statement:
     file: str
+    bank: str = "hdfc"
+    account_type: str = "bank"
+    currency: str = "INR"
+    account_id: str = ""
     period_from: str = ""
     period_to: str = ""
     opening: Decimal = Decimal(0)
@@ -58,8 +62,13 @@ FOOTER = ("GeneratedOn", "Thisisacomputer", "HDFCBANKLIMITED", "*Closingbalance"
 
 def parse(path: Path, password: str) -> Statement:
     st = Statement(file=path.name)
+    pages = _pages(path, password)
+    text = "\n".join("\n".join(p) for p in pages)
+    if "WELLS FARGO" in text.upper():
+        from extract_wells_fargo import parse_lines
+        return parse_lines(pages, path.name)
     rows: list[dict] = []
-    for page_lines in _pages(path, password):
+    for page_lines in pages:
         in_table = False  # page headers and footers are never part of a narration
         for raw in page_lines:
             line = raw.strip()
@@ -109,6 +118,8 @@ def parse(path: Path, password: str) -> Statement:
             st.errors.append(f"balance break at {r['txn_date']} ref {r['ref_no']}")
         prev = r["balance"]
     st.txns = rows
+    if not rows or not st.period_from or "STATEMENT SUMMARY" not in text.upper():
+        st.errors.append("unsupported or empty statement: expected HDFC current account or Wells Fargo credit card")
     _reconcile(st)
     return st
 

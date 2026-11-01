@@ -45,12 +45,17 @@ def enrich(df: pd.DataFrame) -> pd.DataFrame:
     df["channel"] = df["narration"].map(channel_of)
     df["counterparty_clean"] = df["narration"].map(counterparty_of)
     df["signed_amount"] = df["amount"].where(df["direction"] == "credit", -df["amount"])
-    # Identity of a line item: date, reference, amount and the bank's running balance. Narration is left out because
+    # Identity of a bank line item: date, reference, amount and the bank's running balance. Narration is left out because
     # weekly and monthly statements print it differently for some lines; the balance keeps look-alike lines apart.
     df["txn_id"] = [
         hashlib.sha1(f"{d:%Y%m%d}|{r}|{a:.2f}|{b:.2f}".encode()).hexdigest()[:16]
         for d, r, a, b in zip(df["txn_date"], df["ref_no"], df["amount"], df["balance"])
     ]
+    card = df.get("account_type", pd.Series("bank", index=df.index)) == "credit-card"
+    for i, row in df[card].iterrows():
+        identity = "|".join(str(row[k]) for k in ("account_id", "currency", "txn_date", "value_date", "ref_no", "amount", "direction", "activity_type", "identity_occurrence"))
+        df.loc[i, "txn_id"] = hashlib.sha256(identity.encode()).hexdigest()[:24]
+        df.loc[i, "channel"] = "card"
     df["year"] = df["txn_date"].dt.year
     df["month"] = df["txn_date"].dt.month
     return df

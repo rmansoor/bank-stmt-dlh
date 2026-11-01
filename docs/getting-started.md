@@ -12,7 +12,7 @@ matches them.
 git clone https://github.com/senthilsweb/bank-stmt-dlh.git
 cd bank-stmt-dlh
 make setup                                      # uv sync
-make test                                       # 45 unit tests
+make test                                       # unit tests
 STATEMENTS_DIR=samples/statements make extract  # parse and reconcile -> data/silver/*.parquet
 make gold                                       # categorize, recurring -> data/bank.duckdb
 make report                                     # print the reports
@@ -52,3 +52,35 @@ DD/MM/YY  narration  <reference, 10 to 20 digits>  DD/MM/YY  amount  closing bal
 Direction comes from the running balance, never from a column. The period comes from the `From : ... To : ...`
 line and the totals from the `STATEMENT SUMMARY` block. Another bank is one parser module that returns the same
 columns as `src/extract.py`.
+
+## Wells Fargo credit cards (local only)
+
+The local parser also supports text-based Wells Fargo credit card statements with a
+`Statement Period` and `Account Summary`. Scans and other layouts are rejected.
+Keep personal PDFs in `data/raw/wells-fargo/` (ignored by Git), not in the fictional sample folder.
+Existing PDFs in `samples/mystatement/` are also ignored.
+
+```bash
+STATEMENTS_DIR=data/raw/wells-fargo make extract
+make gold
+make report
+```
+
+Automatic format detection selects the parser. Every activity section must match the summary,
+and previous balance + charges + fees + interest - payments - credits must equal new balance.
+An unsupported or empty PDF produces an explanatory error. If no valid transactions remain,
+previous output is left unchanged; do not run gold/report after failed extraction.
+
+Card reports use USD and distinguish purchases, refunds, payments, fees, interest, cash advances,
+and explicitly labeled balance transfers. Payments are transfers, not income. Refunds reduce
+spending. Purchases grouped by the bank with other charges remain in that section unless the
+narration explicitly identifies a balance transfer; review classifications before relying on totals.
+Reports show transaction-month activity separately from statement closing balances owed.
+Duplicate copies load once; repeated purchases with different references remain separate.
+The review queue is `data/gold/review_queue.csv`. Card transactions never use Jev or founder logic.
+Card reports do not generate cash runway, recurring obligations or weekly emails.
+
+Use separate input folders for bank accounts and cards and for different currencies. Each extraction
+replaces the local ledger; it does not append to previous runs. Account identity uses a hash of the
+issuer, account type and printed last four digits; cards sharing those digits must be processed separately.
+Databricks ingestion, dashboards and email jobs remain designed for HDFC current accounts.

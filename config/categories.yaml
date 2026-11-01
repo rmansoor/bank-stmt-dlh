@@ -1,6 +1,11 @@
 # Master category list. Edit here; rules.yaml and Jev both use these keys.
 # type: income | expense | statutory | debt | transfer
 categories:
+  card-balance-transfer: {type: transfer, description: "Balance moved from another credit account; not new spending"}
+  card-payment:       {type: transfer, description: "Payment toward a credit card balance; not income or new spending"}
+  card-refund:        {type: contra-expense, description: "Credit card refund or adjustment reducing spending"}
+  card-interest:      {type: expense, description: "Credit card interest charges"}
+  card-cash-advance:  {type: transfer, description: "Credit card cash advance; borrowing, not purchase spending"}
   client-receipts:     {type: income,    description: "Payments received from clients or customers"}
   founder-investment:  {type: funding,   description: "Deposits by a founder to fund operational expenses"}
   investor-funding:    {type: funding,   description: "Funds received from an investor"}

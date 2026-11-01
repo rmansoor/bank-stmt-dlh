@@ -16,7 +16,7 @@ statements and two overlapping weekly ones, no password. The sample payee map in
 
 ```bash
 make setup                                   # uv sync
-make test                                    # 45 unit tests
+make test                                    # unit tests
 STATEMENTS_DIR=samples/statements make extract   # parse and reconcile -> data/silver/*.parquet
 make gold                                    # categorize, recurring -> data/bank.duckdb
 make report                                  # print the reports
@@ -48,6 +48,11 @@ PDF statements  (local folder | S3-compatible bucket)
 | Leftovers | Jev, optional, confidence 0.9 or more |
 
 ## Your own statements
+
+Local Wells Fargo credit card statements are also supported, with USD card reports.
+See [the walkthrough](docs/getting-started.md#wells-fargo-credit-cards-local-only).
+Keep personal statements under `data/raw/`; the tracked samples are fictional.
+
 
 1. `cp .env.sample .env`. Set `PDF_PASSWORD` (HDFC protects each statement) and `STATEMENTS_DIR`.
    Never commit `.env`.

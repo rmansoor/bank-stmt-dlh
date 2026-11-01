@@ -79,6 +79,7 @@ def apply_founder(df: pd.DataFrame) -> pd.DataFrame:
     names = [re.compile(rf"(?<![A-Z]){re.escape(n.upper())}(?![A-Z])") for n in cfg["names"]]
     is_f = df["counterparty_clean"].map(lambda c: any(rx.search(c) for rx in names))
     df = df.copy()
+    is_f &= df.get("account_type", pd.Series("bank", index=df.index)) != "credit-card"
     df["is_founder"] = is_f
     df.loc[is_f & (df["direction"] == "debit"), ["category", "category_source", "category_confidence"]] = [cfg["debit_category"], "founder", 1.0]
     open_debits = df[is_f & (df["direction"] == "debit")].sort_values("txn_date")
@@ -137,6 +138,10 @@ def categorize(df: pd.DataFrame, use_jev: bool = True, jev_cache: dict | None = 
     cache = jev_cache if jev_cache is not None else {}
     for _, row in out.iterrows():
         cp = row["counterparty_clean"]
+        card = row.get("account_type") == "credit-card"
+        card_categories = {"payment": "card-payment", "refund": "card-refund", "fee": "bank-charges", "interest": "card-interest", "cash-advance": "card-cash-advance", "balance-transfer": "card-balance-transfer"}
+        if card and row.get("activity_type") in card_categories:
+            cat.append(card_categories[row["activity_type"]]); src.append("card-section"); conf.append(1.0); why.append(""); continue
         mc = map_category(cp, mmap, row["direction"], row["txn_date"])
         if mc:
             cat.append(mc); src.append("map"); conf.append(1.0); why.append(""); continue
@@ -144,7 +149,7 @@ def categorize(df: pd.DataFrame, use_jev: bool = True, jev_cache: dict | None = 
         if rc:
             cat.append(rc); src.append("rule"); conf.append(1.0); why.append(""); continue
         jev_unsure = False
-        if use_jev:
+        if use_jev and not card:
             state = f"Counterparty: {cp}. Channel: {row['channel']}. Direction: {row['direction']}."
             if state not in cache:
                 cache[state] = jev_category(state, cats)
