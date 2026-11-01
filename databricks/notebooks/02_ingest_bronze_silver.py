@@ -41,7 +41,9 @@ CAT, SCOPE = S["catalog"], S["secret_scope"]
 
 import pandas as pd
 import yaml
-import extract, normalize, dedupe, minio_reader as mr, sharepoint_reader as spr
+import extract, normalize, dedupe, lakehouse, minio_reader as mr, sharepoint_reader as spr
+MODE = S["lakehouse_account_type"]
+lakehouse.mode_currency(MODE)
 
 BUCKET, PREFIX = S["minio_bucket"], S["minio_prefix"]
 secret = lambda k: dbutils.secrets.get(SCOPE, k)
@@ -62,12 +64,15 @@ if SOURCE == "sharepoint":
     list_files = lambda: [{**o, "object_key": f"{k}/{o['object_key']}", "kind": k} for k, c in clients.items() for o in c.list_pdfs()]
     fetch = lambda o, path: clients[o["kind"]].download(o, path)
 else:
-    s3 = mr.client(secret("minio_endpoint"), secret("minio_access_key"), secret("minio_secret_key"))
+    s3 = mr.client(secret("minio_endpoint"), secret("minio_access_key"), secret("minio_secret_key"), region=S["minio_region"])
     # keys under <prefix>weekly/ are weekly statements, every other PDF under the prefix is monthly
     list_files = lambda: [{**o, "kind": "weekly" if "/weekly/" in o["object_key"] else "monthly"} for o in mr.list_pdfs(s3, BUCKET, PREFIX)]
     fetch = lambda o, path: mr.download(s3, BUCKET, o["object_key"], path)
 print("statement source:", SOURCE)
-PASSWORD = secret("pdf_password")
+try:
+    PASSWORD = secret("pdf_password")
+except Exception:
+    PASSWORD = ""  # unencrypted statements need no secret
 
 # COMMAND ----------
 
@@ -104,6 +109,13 @@ add_column("bronze.statement_files", "source", "STRING", "minio")             # 
 add_column("bronze.statement_files", "statement_kind", "STRING", "monthly")   # and were all monthly statements
 add_column("silver.statements", "statement_kind", "STRING", "monthly")
 add_column("silver.transactions", "statement_kind", "STRING", "monthly")
+for table in ("bronze.raw_lines", "silver.transactions"):
+    for col, typ in lakehouse.METADATA_TYPES.items():
+        add_column(table, col, typ, str(lakehouse.METADATA_DEFAULTS[col]))
+for col in lakehouse.STATEMENT_METADATA:
+    add_column("silver.statements", col, lakehouse.METADATA_TYPES[col], str(lakehouse.METADATA_DEFAULTS[col]))
+# Fail before processing or writing if this catalog belongs to another account mode.
+lakehouse.validate_mode(lakehouse.metadata(spark.table(f"{CAT}.silver.transactions").select("account_type", "currency").distinct().toPandas()), MODE)
 
 # COMMAND ----------
 
@@ -115,7 +127,8 @@ add_column("silver.transactions", "statement_kind", "STRING", "monthly")
 def merge(df_pd, table, key, cols):
     if df_pd is None or len(df_pd) == 0:
         return 0
-    spark.createDataFrame(df_pd[cols]).createOrReplaceTempView("_stage")
+    schema = spark.table(f"{CAT}.{table}").select(*cols).schema
+    lakehouse.typed_frame(spark, df_pd, schema).createOrReplaceTempView("_stage")
     sets = ", ".join(f"t.{c} = s.{c}" for c in cols if c != key)
     spark.sql(f"""MERGE INTO {CAT}.{table} t USING _stage s ON t.{key} = s.{key}
                   WHEN MATCHED THEN UPDATE SET {sets} WHEN NOT MATCHED THEN INSERT *""")
@@ -123,15 +136,18 @@ def merge(df_pd, table, key, cols):
 
 def append(rows, table):
     if rows:
-        spark.createDataFrame(pd.DataFrame(rows)).write.mode("append").saveAsTable(f"{CAT}.{table}")
+        schema = spark.table(f"{CAT}.{table}").schema
+        frame = pd.DataFrame(rows).reindex(columns=schema.fieldNames())
+        lakehouse.typed_frame(spark, frame, schema).write.mode("append").saveAsTable(f"{CAT}.{table}")
 
 TX_COLS = ["txn_id", "file_sha256", "source_file", "seq", "txn_date", "value_date", "narration", "ref_no", "amount", "balance", "direction",
-           "signed_amount", "channel", "counterparty_clean", "year", "month", "statement_kind"]
+           "signed_amount", "channel", "counterparty_clean", "year", "month", "statement_kind"] + list(lakehouse.METADATA_TYPES)
 
 def write_resolved(appearances, rows):
-    if len(appearances):
-        spark.createDataFrame(appearances, schema=SOURCES_SCHEMA).write.mode("append").saveAsTable(f"{CAT}.silver.transaction_sources")
+    # Persist facts before their completion records so a failed write can be retried.
     merge(rows if len(rows) else None, "silver.transactions", "txn_id", TX_COLS)
+    if len(appearances):
+        lakehouse.typed_frame(spark, appearances, SOURCES_SCHEMA).write.mode("append").saveAsTable(f"{CAT}.silver.transaction_sources")
 
 now = datetime.now(timezone.utc)
 
@@ -148,7 +164,7 @@ if spark.table(f"{CAT}.silver.transaction_sources").count() == 0 and spark.table
              .toPandas().rename(columns={"min(ingested_at)": "t", "first(statement_kind)": "kind"}))
     ok = {r.file_sha256: r.file for r in spark.table(f"{CAT}.silver.statements").select("file_sha256", "file").collect()}
     raw_all = spark.table(f"{CAT}.bronze.raw_lines").toPandas()
-    cols = ["seq", "txn_date", "narration", "ref_no", "value_date", "amount", "balance", "direction"]
+    cols = ["seq", "txn_date", "narration", "ref_no", "value_date", "amount", "balance", "direction"] + list(lakehouse.METADATA_TYPES)
     batch = []
     for r in order.sort_values(["t", "file_sha256"]).itertuples():
         if r.file_sha256 in ok:
@@ -169,8 +185,9 @@ else:
 
 objects = list_files()
 bf = spark.table(f"{CAT}.bronze.statement_files").select("object_key", "etag", "file_sha256", "parser_version", "reconciled").collect()
-known = {(r.object_key, r.etag) for r in bf}
-known_sha = {r.file_sha256: (r.parser_version, r.reconciled) for r in bf}
+completed_sha = {r.file_sha256 for r in spark.table(f"{CAT}.silver.transaction_sources").select("file_sha256").distinct().collect()}
+known = {(r.object_key, r.etag) for r in bf if r.reconciled and r.file_sha256 in completed_sha}
+known_sha = {r.file_sha256: (r.parser_version, bool(r.reconciled and r.file_sha256 in completed_sha)) for r in bf}
 candidates = [o for o in objects if (o["object_key"], o["etag"]) not in known]
 print(f"{len(objects)} PDFs listed in {SOURCE}, {len(candidates)} with an unknown key or etag")
 
@@ -189,13 +206,15 @@ with tempfile.TemporaryDirectory() as tmp:
         sha = fetch(o, path)
         row = {"object_key": o["object_key"], "etag": o["etag"], "size_bytes": o["size_bytes"], "file_sha256": sha, "ingested_at": now,
                "source": SOURCE, "statement_kind": o["kind"]}
-        if sha in known_sha:  # same content already loaded: only record the new location and etag
+        if sha in known_sha and known_sha[sha][1]:  # same content already loaded: only record the new location and etag
             path.unlink()
             files.append({**row, "parser_version": known_sha[sha][0], "reconciled": known_sha[sha][1]})
             continue
         st = extract.parse(path, PASSWORD)
         path.unlink()  # the PDF is never kept
         errors = list(st.errors)
+        if st.account_type != MODE or st.currency != lakehouse.mode_currency(MODE):
+            errors.append("statement account type/currency does not match configured lakehouse mode")
         df = None
         if st.txns and not errors:
             df = dedupe.prepare(pd.DataFrame(st.txns), name, sha, o["kind"])
@@ -207,13 +226,14 @@ with tempfile.TemporaryDirectory() as tmp:
         files.append({**row, "parser_version": extract.PARSER_VERSION, "reconciled": ok})
         for r in st.txns:
             raw.append({"file_sha256": sha, "source_file": name, "seq": r["seq"], "txn_date": r["txn_date"], "narration": r["narration"],
-                        "ref_no": r["ref_no"], "value_date": r["value_date"], "amount": float(r["amount"]), "balance": float(r["balance"]),
-                        "direction": r["direction"]})
+                        "ref_no": r["ref_no"], "value_date": r["value_date"], "amount": float(r["amount"]), "balance": float(r["balance"]) if r["balance"] is not None else None,
+                        "direction": r["direction"],
+                        **{key: r.get(key, default) for key, default in lakehouse.METADATA_DEFAULTS.items()}})
         if not ok:
             quarantine.append({"file_sha256": sha, "file": name, "errors": "; ".join(errors), "quarantined_at": now})
             print("QUARANTINED", name, "|", "; ".join(errors)[:200])
             continue
-        stmts.append({"file_sha256": sha, "file": name, "statement_kind": o["kind"],
+        stmts.append({**lakehouse.statement_metadata(st), "file_sha256": sha, "file": name, "statement_kind": o["kind"],
                       "period_from": pd.to_datetime(st.period_from, format="%d/%m/%Y").date(),
                       "period_to": pd.to_datetime(st.period_to, format="%d/%m/%Y").date(), "opening": float(st.opening),
                       "closing": float(st.closing), "debits": float(st.debits), "credits": float(st.credits), "txn_count": len(st.txns),
@@ -250,8 +270,10 @@ append(raw, "bronze.raw_lines")
 append(files, "bronze.statement_files")
 append(quarantine, "silver.quarantine")
 merge(pd.DataFrame(stmts) if stmts else None, "silver.statements", "file_sha256",
-      ["file_sha256", "file", "statement_kind", "period_from", "period_to", "opening", "closing", "debits", "credits", "txn_count", "parser_version", "parsed_at"])
+      ["file_sha256", "file", "statement_kind", "period_from", "period_to", "opening", "closing", "debits", "credits", "txn_count", "parser_version", "parsed_at"] + lakehouse.STATEMENT_METADATA)
 write_resolved(appearances, rows)
+if stmts:
+    spark.sql(f"DELETE FROM {CAT}.silver.quarantine WHERE file_sha256 IN (SELECT file_sha256 FROM {CAT}.silver.statements)")
 
 # COMMAND ----------
 

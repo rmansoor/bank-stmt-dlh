@@ -165,5 +165,19 @@ page_dq = {"name": "page_dq", "displayName": "Data quality", "layout": [
                                   ("txns", "Payments", "integer", "number"), MONEY("total", "Total (INR)"), ("reason", "Why", "string", "string")], "Review queue", pos(0, 22, 6, 8)),
 ]}
 
-OUT.write_text(json.dumps({"datasets": datasets, "pages": [page_over, page_range, page_spend, page_rec, page_fund, page_dq]}, indent=1))
-print("wrote", OUT.name, OUT.stat().st_size, "bytes")
+def build(mode="bank"):
+    if mode == "credit-card":
+        from build_card_dashboard import build as card_build
+        return card_build()
+    if mode != "bank":
+        raise ValueError("unknown lakehouse_account_type")
+    return {"datasets": datasets, "pages": [page_over, page_range, page_spend, page_rec, page_fund, page_dq]}
+
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+    import settings
+    mode = settings.load()["lakehouse_account_type"]
+    OUT.write_text(json.dumps(build(mode), indent=1))
+    print("wrote", OUT.name, OUT.stat().st_size, "bytes", "mode:", mode)

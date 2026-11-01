@@ -39,7 +39,7 @@ get = lambda k: dbutils.secrets.get(SCOPE, k)
 BUCKET, PREFIX = S["minio_bucket"], S["minio_prefix"]
 mk = lambda **kw: boto3.client(
     "s3", endpoint_url=get("minio_endpoint"), aws_access_key_id=get("minio_access_key"),
-    aws_secret_access_key=get("minio_secret_key"), region_name="us-east-1",
+    aws_secret_access_key=get("minio_secret_key"), region_name=S["minio_region"],
     config=Config(s3={"addressing_style": "path"}, connect_timeout=15, read_timeout=60, retries={"max_attempts": 1}, **kw))
 
 out = {"boto3": boto3.__version__}
@@ -68,7 +68,7 @@ if keys:
     probe("head_default", lambda: s3.head_object(Bucket=BUCKET, Key=k))
     probe("get_range", lambda: s3.get_object(Bucket=BUCKET, Key=k, Range="bytes=0-9"))
     probe("get_sigv2_path", lambda: boto3.client("s3", endpoint_url=get("minio_endpoint"), aws_access_key_id=get("minio_access_key"),
-          aws_secret_access_key=get("minio_secret_key"), region_name="us-east-1",
+          aws_secret_access_key=get("minio_secret_key"), region_name=S["minio_region"],
           config=Config(signature_version="s3v4", s3={"addressing_style": "path", "payload_signing_enabled": False})).get_object(Bucket=BUCKET, Key=k, Range="bytes=0-9"))
 
 print("B0 DIAG", json.dumps(out))

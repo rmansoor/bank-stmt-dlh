@@ -37,7 +37,8 @@ except Exception:
     print("no Jev key: unmatched rows stay unclassified or for review")
 
 import pandas as pd
-import categorize, recurring
+import categorize, recurring, lakehouse
+MODE = S["lakehouse_account_type"]
 
 # COMMAND ----------
 
@@ -50,7 +51,7 @@ spark.sql(f"""CREATE TABLE IF NOT EXISTS {CAT}.gold.jev_labels (request STRING, 
 cache = {r.request: (r.category, r.confidence) for r in spark.table(f"{CAT}.gold.jev_labels").collect()}
 loaded = set(cache)
 
-fact = categorize.categorize(tx, use_jev=bool(os.environ.get("TYPESAFE_API_KEY")), jev_cache=cache)
+fact, rec, rq = lakehouse.gold_tables(tx, MODE, use_jev=bool(os.environ.get("TYPESAFE_API_KEY")), cache=cache)
 
 new = [(k, v[0], float(v[1]), datetime.now(timezone.utc)) for k, v in cache.items() if k not in loaded and v]
 if new:
@@ -59,32 +60,13 @@ print(f"{len(new)} new Jev answers stored, {len(loaded)} reused")
 
 # COMMAND ----------
 
-def to_spark(pdf):
-    return spark.createDataFrame(pdf.astype(object).where(pdf.notna(), None))
+def save(pdf, name, schema):
+    lakehouse.typed_frame(spark, pdf, schema).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CAT}.gold.{name}")
 
-fact["is_founder"] = fact["is_founder"].fillna(False).astype(bool) if "is_founder" in fact else False
-fact["category_confidence"] = fact["category_confidence"].astype(float)
-fact["review_reason"] = fact["review_reason"].fillna("")
-fact_cols = ["txn_id", "source_file", "seq", "txn_date", "value_date", "narration", "ref_no", "amount", "balance", "direction", "signed_amount",
-             "channel", "counterparty_clean", "year", "month", "category", "category_type", "category_source", "category_confidence", "review_reason", "is_founder"]
-f = fact[fact_cols].copy()
-f["txn_date"], f["value_date"] = f["txn_date"].dt.date, f["value_date"].dt.date
-for c in ("seq", "year", "month"):
-    f[c] = f[c].astype(int)
-to_spark(f).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CAT}.gold.fact_transactions")
-
-rec = pd.concat([recurring.detect(fact).assign(source="detected"), recurring.declared(fact).assign(source="declared")], ignore_index=True)
-import re
-ended = "|".join(recurring.ended_patterns())
-rec["ended"] = rec["counterparty_clean"].str.contains(ended, case=False, regex=True) if ended else False
-for c in ("first_seen", "last_seen", "next_expected"):
-    rec[c] = pd.to_datetime(rec[c]).dt.date
-to_spark(rec).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CAT}.gold.recurring_series")
-
-rq = (fact[fact["category"].isin(["human-intervention-required", "unclassified"])]
-      .groupby(["category", "counterparty_clean", "direction"], as_index=False)
-      .agg(txns=("amount", "size"), total=("amount", "sum"), reason=("review_reason", "first"), example=("narration", "first")))
-to_spark(rq).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CAT}.gold.review_queue")
+f = fact
+save(fact, "fact_transactions", lakehouse.FACT_SCHEMA)
+save(rec, "recurring_series", lakehouse.RECURRING_SCHEMA)
+save(rq, "review_queue", lakehouse.REVIEW_SCHEMA)
 print(f"fact_transactions {len(f)}, recurring_series {len(rec)}, review_queue {len(rq)}")
 
 # COMMAND ----------
@@ -96,6 +78,10 @@ print(f"fact_transactions {len(f)}, recurring_series {len(rec)}, review_queue {l
 
 sql_text = open(f"{BASE}/databricks/sql/20_gold_views.sql").read().replace("__CATALOG__", CAT)
 lines = [ln for ln in sql_text.splitlines() if not ln.strip().startswith("--")]
+for stmt in [s.strip() for s in "\n".join(lines).split(";") if s.strip()]:
+    spark.sql(stmt)
+card_sql = open(f"{BASE}/databricks/sql/21_card_views.sql").read().replace("__CATALOG__", CAT)
+lines = [ln for ln in card_sql.splitlines() if not ln.strip().startswith("--")]
 for stmt in [s.strip() for s in "\n".join(lines).split(";") if s.strip()]:
     spark.sql(stmt)
 print("views refreshed")

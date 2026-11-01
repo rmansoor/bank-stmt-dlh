@@ -11,11 +11,11 @@ WITH f AS (
     SUM(CASE WHEN direction = 'credit' AND category NOT IN ('client-receipts', 'founder-investment', 'investor-funding', 'founder-funding') THEN amount ELSE 0 END) AS other_in,
     SUM(CASE WHEN direction = 'debit' AND category = 'operations' THEN amount ELSE 0 END) AS founder_payout,
     SUM(CASE WHEN direction = 'debit' AND category <> 'operations' THEN amount ELSE 0 END) AS operating_spend
-  FROM __CATALOG__.gold.fact_transactions GROUP BY 1),
+  FROM __CATALOG__.gold.fact_transactions WHERE account_type = 'bank' AND currency = 'INR' GROUP BY 1),
 s AS (SELECT m, closing_balance, partial FROM (
         SELECT date_trunc('month', period_from) AS m, closing AS closing_balance, period_to < last_day(period_to) AS partial,
                ROW_NUMBER() OVER (PARTITION BY date_trunc('month', period_from) ORDER BY (statement_kind = 'monthly') DESC, period_to DESC) AS rn
-        FROM __CATALOG__.silver.statements) WHERE rn = 1)
+        FROM __CATALOG__.silver.statements WHERE account_type = 'bank' AND currency = 'INR') WHERE rn = 1)
 SELECT date_format(f.m, 'yyyy-MM') AS month, f.m AS month_start, ROUND(f.client_receipts, 2) AS client_receipts, ROUND(f.funding_in, 2) AS funding_in,
   ROUND(f.other_in, 2) AS other_in, ROUND(f.founder_payout, 2) AS founder_payout, ROUND(f.operating_spend, 2) AS operating_spend,
   ROUND(f.founder_payout + f.operating_spend, 2) AS total_outflow, s.closing_balance, s.partial
@@ -30,11 +30,11 @@ LATERAL VIEW STACK(5, 'Client receipts', client_receipts, 'Funding', funding_in,
 -- Debits by category and month.
 CREATE OR REPLACE VIEW __CATALOG__.gold.spend_by_category_month AS
 SELECT date_format(txn_date, 'yyyy-MM') AS month, category, category_type, ROUND(SUM(amount), 2) AS amount, COUNT(*) AS txns
-FROM __CATALOG__.gold.fact_transactions WHERE direction = 'debit' GROUP BY 1, 2, 3;
+FROM __CATALOG__.gold.fact_transactions WHERE account_type = 'bank' AND currency = 'INR' AND direction = 'debit' GROUP BY 1, 2, 3;
 
 CREATE OR REPLACE VIEW __CATALOG__.gold.category_totals AS
 SELECT category, category_type, ROUND(SUM(amount), 2) AS amount, COUNT(*) AS txns
-FROM __CATALOG__.gold.fact_transactions WHERE direction = 'debit' GROUP BY 1, 2;
+FROM __CATALOG__.gold.fact_transactions WHERE account_type = 'bank' AND currency = 'INR' AND direction = 'debit' GROUP BY 1, 2;
 
 -- Recurring and yearly payments with a status against the latest transaction date.
 CREATE OR REPLACE VIEW __CATALOG__.gold.upcoming_payments AS
@@ -48,13 +48,13 @@ CREATE OR REPLACE VIEW __CATALOG__.gold.founder_monthly AS
 SELECT date_format(txn_date, 'yyyy-MM') AS month, category,
   ROUND(SUM(CASE WHEN direction = 'debit' THEN amount ELSE 0 END), 2) AS paid_to_founder,
   ROUND(SUM(CASE WHEN direction = 'credit' THEN amount ELSE 0 END), 2) AS received_from_founder
-FROM __CATALOG__.gold.fact_transactions WHERE is_founder GROUP BY 1, 2;
+FROM __CATALOG__.gold.fact_transactions WHERE account_type = 'bank' AND currency = 'INR' AND is_founder GROUP BY 1, 2;
 
 -- Funding received by who, for the funding page.
 CREATE OR REPLACE VIEW __CATALOG__.gold.funding_received AS
 SELECT date_format(txn_date, 'yyyy-MM') AS month, category, ROUND(SUM(amount), 2) AS amount, COUNT(*) AS txns
 FROM __CATALOG__.gold.fact_transactions
-WHERE direction = 'credit' AND category IN ('founder-investment', 'investor-funding', 'founder-funding') GROUP BY 1, 2;
+WHERE account_type = 'bank' AND currency = 'INR' AND direction = 'credit' AND category IN ('founder-investment', 'investor-funding', 'founder-funding') GROUP BY 1, 2;
 
 -- Data quality: unlabelled payments and the reconciliation status of every statement file.
 CREATE OR REPLACE VIEW __CATALOG__.gold.review_summary AS
@@ -79,13 +79,13 @@ SELECT source_file AS file, statement_kind, duplicate_of_file AS duplicate_of, C
 FROM __CATALOG__.silver.transaction_sources WHERE is_duplicate GROUP BY 1, 2, 3;
 
 CREATE OR REPLACE VIEW __CATALOG__.gold.category_source_mix AS
-SELECT category_source, COUNT(*) AS txns, ROUND(SUM(amount), 2) AS amount FROM __CATALOG__.gold.fact_transactions GROUP BY 1;
+SELECT category_source, COUNT(*) AS txns, ROUND(SUM(amount), 2) AS amount FROM __CATALOG__.gold.fact_transactions WHERE account_type = 'bank' AND currency = 'INR' GROUP BY 1;
 
 -- Headline figures. Outflow = mean total debits (founder payouts included) of the last three full months.
 CREATE OR REPLACE VIEW __CATALOG__.gold.kpis AS
 WITH full AS (SELECT total_outflow FROM __CATALOG__.gold.monthly_flow WHERE NOT partial ORDER BY month_start DESC LIMIT 3),
 burn AS (SELECT ROUND(AVG(total_outflow), 0) AS monthly_outflow FROM full),
-cash AS (SELECT closing AS cash, period_to AS as_of FROM __CATALOG__.silver.statements ORDER BY period_to DESC LIMIT 1)
+cash AS (SELECT closing AS cash, period_to AS as_of FROM __CATALOG__.silver.statements WHERE account_type = 'bank' AND currency = 'INR' ORDER BY period_to DESC LIMIT 1)
 SELECT cash.cash, cash.as_of, burn.monthly_outflow, ROUND(cash.cash / burn.monthly_outflow, 1) AS runway_months,
   (SELECT ROUND(SUM(funding_in), 2) FROM __CATALOG__.gold.monthly_flow) AS funding_received,
   (SELECT ROUND(SUM(client_receipts), 2) FROM __CATALOG__.gold.monthly_flow) AS client_receipts
@@ -98,9 +98,9 @@ SELECT txn_date, category, category_type,
   ROUND(SUM(CASE WHEN direction = 'credit' THEN amount ELSE 0 END), 2) AS money_in,
   ROUND(SUM(CASE WHEN direction = 'debit' THEN amount ELSE 0 END), 2) AS money_out,
   ROUND(SUM(signed_amount), 2) AS net, COUNT(*) AS txns
-FROM __CATALOG__.gold.fact_transactions GROUP BY txn_date, category, category_type;
+FROM __CATALOG__.gold.fact_transactions WHERE account_type = 'bank' AND currency = 'INR' GROUP BY txn_date, category, category_type;
 
 -- The bank's running balance after the last payment of each day.
 CREATE OR REPLACE VIEW __CATALOG__.gold.balance_daily AS
 SELECT txn_date, max_by(balance, seq) AS closing_balance
-FROM __CATALOG__.gold.fact_transactions GROUP BY txn_date;
+FROM __CATALOG__.gold.fact_transactions WHERE account_type = 'bank' AND currency = 'INR' GROUP BY txn_date;

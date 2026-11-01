@@ -20,10 +20,14 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
+sys.path.insert(0, str(ROOT / "src"))
+import settings as project_settings
+from lakehouse import require_bank_report
+
 NAME = "bank-stmt-dlh"
 REPORT_NAME = "bank-stmt-dlh-weekly-cash-report"
 USER = os.environ["DATABRICKS_USER"]
-ALERT_EMAIL = os.environ.get("ALERT_EMAIL", "").strip() or USER
+ALERT_EMAIL = os.environ.get("ALERT_EMAIL", "").strip()
 WS = f"/Users/{USER}/bank-stmt-dlh/notebooks"
 
 
@@ -35,7 +39,7 @@ def spec() -> dict:
         "max_concurrent_runs": 1,
         "parameters": [{"name": "force", "default": "false"}],
         "schedule": {"quartz_cron_expression": "0 0 0 * * ?", "timezone_id": "Asia/Kolkata", "pause_status": "UNPAUSED"},
-        "email_notifications": {"on_failure": [ALERT_EMAIL]},
+        "email_notifications": {"on_failure": [ALERT_EMAIL]} if ALERT_EMAIL else {},
         "tasks": [
             nb("ingest", "02_ingest_bronze_silver"),
             {"task_key": "has_new_data", "depends_on": [{"task_key": "ingest"}],
@@ -53,16 +57,19 @@ def report_spec() -> dict:
     nb = lambda key, nbk, deps, **kw: {"task_key": key, "notebook_task": {"notebook_path": f"{WS}/{nbk}"}, "depends_on": deps, **kw}
     return {**base, "name": REPORT_NAME,
             "parameters": [{"name": "force", "default": "false"}, {"name": "week_end", "default": ""}, {"name": "report_force", "default": "false"}, {"name": "mode", "default": ""}],
-            "schedule": {"quartz_cron_expression": "0 0 0 ? * MON", "timezone_id": "America/New_York", "pause_status": "UNPAUSED"},
+            "schedule": {"quartz_cron_expression": "0 0 0 ? * MON", "timezone_id": "America/New_York", "pause_status": "UNPAUSED" if project_settings.load()["lakehouse_account_type"] == "bank" else "PAUSED"},
             "tasks": base["tasks"] + [nb("report", "04_weekly_cash_report", [{"task_key": "gold"}, {"task_key": "ingest"}], run_if="NONE_FAILED")]}
 
 
 def upsert(api, name: str, body: dict) -> int:
-    jobs = api("GET", "/api/2.1/jobs/list", params={"name": name}).json().get("jobs", [])
+    listing = api("GET", "/api/2.1/jobs/list", params={"name": name})
+    listing.raise_for_status()
+    jobs = listing.json().get("jobs", [])
     if jobs:
         jid = jobs[0]["job_id"]
         r = api("POST", "/api/2.1/jobs/reset", json={"job_id": jid, "new_settings": body})
-        print("updated job", name, jid, r.status_code, r.text[:200] if r.status_code != 200 else "")
+        r.raise_for_status()
+        print("updated job", name, jid)
     else:
         r = api("POST", "/api/2.1/jobs/create", json=body)
         if r.status_code != 200:
@@ -74,6 +81,8 @@ def upsert(api, name: str, body: dict) -> int:
 
 def main() -> int:
     load_dotenv(ROOT / ".env")
+    if "--report" in sys.argv[1:]:
+        require_bank_report(project_settings.load()["lakehouse_account_type"])
     host = os.environ["DATABRICKS_HOST"].strip().rstrip("/")
     host = host if host.startswith("http") else "https://" + host
     h = {"Authorization": f"Bearer {os.environ['DATABRICKS_TOKEN']}"}
@@ -85,11 +94,15 @@ def main() -> int:
     (ROOT / ".env").write_text(env)
     argv = sys.argv[1:]
     if "--run" in argv:
-        print("run", api("POST", "/api/2.1/jobs/run-now", json={"job_id": jid, "job_parameters": {"force": "true"}}).json())
+        response = api("POST", "/api/2.1/jobs/run-now", json={"job_id": jid, "job_parameters": {"force": "true"}})
+        response.raise_for_status()
+        print("run", response.json())
     if "--report" in argv:
         arg = lambda flag: argv[argv.index(flag) + 1] if flag in argv else ""
         params = {"week_end": arg("--week-end"), "report_force": "true" if "--force" in argv else "false", "mode": arg("--mode")}
-        print("report run", api("POST", "/api/2.1/jobs/run-now", json={"job_id": rid, "job_parameters": params}).json())
+        response = api("POST", "/api/2.1/jobs/run-now", json={"job_id": rid, "job_parameters": params})
+        response.raise_for_status()
+        print("report run", response.json())
     return 0
 
 

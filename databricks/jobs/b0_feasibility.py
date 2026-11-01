@@ -48,7 +48,7 @@ s3 = boto3.client(
     endpoint_url=get("minio_endpoint"),
     aws_access_key_id=get("minio_access_key"),
     aws_secret_access_key=get("minio_secret_key"),
-    region_name="us-east-1",
+    region_name=S["minio_region"],
     config=Config(s3={"addressing_style": "path"}, connect_timeout=15, read_timeout=60, retries={"max_attempts": 2}),
 )
 
@@ -66,13 +66,20 @@ with tempfile.TemporaryDirectory() as tmp:
     t1 = time.time()
     s3.download_file(BUCKET, key, path)
     result["download_seconds"] = round(time.time() - t1, 2)
-    with pdfplumber.open(path, password=get("pdf_password")) as pdf:
+    try:
+        password = get("pdf_password")
+    except Exception:
+        password = ""
+    with pdfplumber.open(path, password=password) as pdf:
         result["pages"] = len(pdf.pages)
         lines = []
         for p in pdf.pages:
             lines += (p.extract_text(x_tolerance=1.5, y_tolerance=3) or "").splitlines()
-txn = re.compile(r"^\d{2}/\d{2}/\d{2}\s+.*\d{10,20}\s+\d{2}/\d{2}/\d{2}\s+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}$")
-result["transaction_lines"] = sum(1 for ln in lines if txn.match(ln.strip()))
+    import extract
+    statement = extract.parse(Path(path), password)
+    result["transaction_lines"] = len(statement.txns)
+    result["reconciled"] = not statement.errors
+    result["validation_errors"] = len(statement.errors)
 result["temp_file_removed"] = not os.path.exists(path)
 
 print("B0 RESULT", json.dumps(result))

@@ -20,6 +20,7 @@ CAT, SCOPE = S["catalog"], S["secret_scope"]
 
 import pandas as pd
 import yaml
+import lakehouse
 
 cfg = lambda name: yaml.safe_load(open(f"{BASE}/config/{name}"))
 
@@ -48,7 +49,15 @@ settings = pd.DataFrame([{"key": k, "value": str(v)} for k, v in cfg("settings.y
 
 # COMMAND ----------
 
+SCHEMAS = {
+    "dim_category": "category STRING, category_type STRING, description STRING",
+    "payee_map": "category STRING, name STRING, direction STRING, valid_from STRING, valid_until STRING",
+    "category_rules": "seq INT, pattern STRING, category STRING, direction STRING",
+    "recurring_declared": "name STRING, pattern STRING, cadence STRING, kind STRING",
+    "settings": "key STRING, value STRING",
+}
 for name, pdf in {"dim_category": dim, "payee_map": payee, "category_rules": rules, "recurring_declared": declared, "settings": settings}.items():
-    sdf = spark.createDataFrame(pdf.astype(object).where(pdf.notna(), None), schema=None) if len(pdf) else spark.createDataFrame(pdf)
+    names = [part.strip().split()[0] for part in SCHEMAS[name].split(",")]
+    sdf = lakehouse.typed_frame(spark, pdf.reindex(columns=names), SCHEMAS[name])
     sdf.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CAT}.gold.{name}")
     print(f"{name}: {len(pdf)} rows")

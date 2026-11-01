@@ -1,6 +1,6 @@
 # bank-stmt-dlh
 
-Turns bank statement PDFs (HDFC Bank current account layout) into a reconciled ledger with category,
+Turns statement PDFs (HDFC Bank current accounts or Wells Fargo credit cards) into a reconciled ledger with category,
 recurring-payment, cash and runway reports. Runs on a laptop with DuckDB, or as a scheduled Databricks job
 that reads the PDFs from an S3-compatible bucket (MinIO, AWS S3, R2) and serves an AI/BI dashboard and a
 weekly cash report by email.
@@ -49,8 +49,8 @@ PDF statements  (local folder | S3-compatible bucket)
 
 ## Your own statements
 
-Local Wells Fargo credit card statements are also supported, with USD card reports.
-See [the walkthrough](docs/getting-started.md#wells-fargo-credit-cards-local-only).
+Wells Fargo credit card statements are supported locally and in Databricks, with USD card reports.
+See [the walkthrough](docs/getting-started.md#wells-fargo-credit-cards).
 Keep personal statements under `data/raw/`; the tracked samples are fictional.
 
 
@@ -65,6 +65,10 @@ A statement for a running month is partial; drop the full one in after month end
 overlap monthly ones; each line item is identified by date, reference, amount and running balance.
 
 ## Databricks with an S3-compatible bucket
+
+Choose `lakehouse_account_type: credit-card` for Wells Fargo (this checkout) or `bank` for HDFC.
+Use a separate catalog for each type/currency. Card mode uses USD views/dashboard and blocks the bank cash email.
+See [the cloud setup guide](docs/databricks.md).
 
 You need a Databricks workspace (Free Edition works) and a bucket on MinIO, S3 or R2 with a key limited
 to that bucket.

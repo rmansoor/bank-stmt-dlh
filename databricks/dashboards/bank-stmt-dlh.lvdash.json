@@ -1,141 +1,78 @@
 {
  "datasets": [
   {
-   "name": "ds_kpis",
-   "displayName": "Headline figures",
+   "name": "card_kpis",
+   "displayName": "Credit card totals (USD)",
    "queryLines": [
-    "select * from __CATALOG__.gold.kpis"
+    "select balance_owed, net_spending, payments, fees_and_interest, cast(oldest_account_as_of as string) as oldest_account_as_of, cast(latest_account_as_of as string) as latest_account_as_of from __CATALOG__.gold.card_kpis"
    ]
   },
   {
-   "name": "ds_in",
-   "displayName": "Money in by month",
+   "name": "card_monthly",
+   "displayName": "Activity by transaction month (USD)",
    "queryLines": [
-    "select month, measure, amount from __CATALOG__.gold.monthly_flow_long where measure in ('Client receipts', 'Funding', 'Other credits')"
+    "select * from __CATALOG__.gold.card_monthly order by month"
    ]
   },
   {
-   "name": "ds_out",
-   "displayName": "Money out by month",
+   "name": "card_balances",
+   "displayName": "Statement balances owed (USD)",
    "queryLines": [
-    "select month, measure, amount from __CATALOG__.gold.monthly_flow_long where measure in ('Operating spend', 'Founder payout')"
+    "select account_id, cast(period_from as string) as period_from, cast(period_to as string) as period_to, opening_balance, balance_owed, charges, payments_and_credits from __CATALOG__.gold.card_statement_balances order by period_to desc"
    ]
   },
   {
-   "name": "ds_monthly",
-   "displayName": "Monthly cash flow",
+   "name": "card_spend",
+   "displayName": "Net spending by category (USD)",
    "queryLines": [
-    "select month, client_receipts, funding_in, other_in, operating_spend, founder_payout, total_outflow, closing_balance, case when partial then 'partial' else 'full' end as month_type from __CATALOG__.gold.monthly_flow order by month"
+    "select * from __CATALOG__.gold.card_spend_by_category order by amount desc"
    ]
   },
   {
-   "name": "ds_cat",
-   "displayName": "Spend by category",
+   "name": "card_activity",
+   "displayName": "Credit card transactions (USD)",
    "queryLines": [
-    "select category, category_type, amount, txns from __CATALOG__.gold.category_totals order by amount desc"
+    "select txn_date, cast(txn_date as string) as day, account_id, counterparty_clean, activity_type, category, amount, spending_amount, debt_change from __CATALOG__.gold.card_activity order by txn_date desc, seq desc"
    ]
   },
   {
-   "name": "ds_cat_month",
-   "displayName": "Spend by category and month",
+   "name": "card_status",
+   "displayName": "Statement reconciliation",
    "queryLines": [
-    "select month, category, category_type, amount, txns from __CATALOG__.gold.spend_by_category_month order by month, amount desc"
+    "select file, cast(period_to as string) as period_to, cast(reconciled as string) as reconciled, txn_count, errors from __CATALOG__.gold.statement_status order by file"
    ]
   },
   {
-   "name": "ds_recurring",
-   "displayName": "Recurring and yearly payments",
+   "name": "card_dups",
+   "displayName": "Duplicate transaction appearances",
    "queryLines": [
-    "select payee, category, cadence, typical_amount, date_format(last_seen, 'yyyy-MM-dd') as last_seen, date_format(next_expected, 'yyyy-MM-dd') as next_expected, status, source from __CATALOG__.gold.upcoming_payments order by case status when 'upcoming' then 0 when 'lapsed' then 1 else 2 end, next_expected"
+    "select file, duplicate_of, lines from __CATALOG__.gold.duplicate_lines"
    ]
   },
   {
-   "name": "ds_funding",
-   "displayName": "Funding received",
+   "name": "card_copies",
+   "displayName": "Repeated PDF content",
    "queryLines": [
-    "select month, category, amount, txns from __CATALOG__.gold.funding_received order by month, category"
+    "select file_sha256, count(distinct object_key) as copies from __CATALOG__.bronze.statement_files group by file_sha256 having count(distinct object_key) > 1"
    ]
   },
   {
-   "name": "ds_founder",
-   "displayName": "Founder payments",
+   "name": "card_review",
+   "displayName": "Transactions needing review (USD)",
    "queryLines": [
-    "select month, category, paid_to_founder, received_from_founder from __CATALOG__.gold.founder_monthly order by month"
-   ]
-  },
-  {
-   "name": "ds_review",
-   "displayName": "Unlabelled payments",
-   "queryLines": [
-    "select category, direction, txns, amount from __CATALOG__.gold.review_summary"
-   ]
-  },
-  {
-   "name": "ds_status",
-   "displayName": "Statement status",
-   "queryLines": [
-    "select file, statement_kind, date_format(period_from, 'yyyy-MM-dd') as period_from, date_format(period_to, 'yyyy-MM-dd') as period_to, txn_count, coalesce(duplicate_lines, 0) as duplicate_lines, cast(reconciled as string) as reconciled, date_format(ingested_at, 'yyyy-MM-dd HH:mm') as ingested_at from __CATALOG__.gold.statement_status order by statement_kind, file"
-   ]
-  },
-  {
-   "name": "ds_dups",
-   "displayName": "Duplicate line items",
-   "queryLines": [
-    "select file, statement_kind, duplicate_of, lines from __CATALOG__.gold.duplicate_lines order by file"
-   ]
-  },
-  {
-   "name": "ds_dr_flow",
-   "displayName": "Cash flow by day and category",
-   "queryLines": [
-    "select txn_date, category, category_type, money_in, money_out, net, txns from __CATALOG__.gold.cashflow_daily"
-   ]
-  },
-  {
-   "name": "ds_dr_long",
-   "displayName": "Money in and out by day",
-   "queryLines": [
-    "select txn_date, measure, amount from __CATALOG__.gold.cashflow_daily LATERAL VIEW STACK(2, 'Money in', money_in, 'Money out', money_out) t as measure, amount"
-   ]
-  },
-  {
-   "name": "ds_dr_bal",
-   "displayName": "Closing balance by day",
-   "queryLines": [
-    "select txn_date, closing_balance from __CATALOG__.gold.balance_daily"
-   ]
-  },
-  {
-   "name": "ds_dr_tx",
-   "displayName": "Payments in the range",
-   "queryLines": [
-    "select txn_date, date_format(txn_date, 'yyyy-MM-dd') as day, counterparty_clean, category, direction, amount from __CATALOG__.gold.fact_transactions order by txn_date desc, seq desc"
-   ]
-  },
-  {
-   "name": "ds_source",
-   "displayName": "How payments were labelled",
-   "queryLines": [
-    "select category_source, txns, amount from __CATALOG__.gold.category_source_mix order by txns desc"
-   ]
-  },
-  {
-   "name": "ds_queue",
-   "displayName": "Review queue",
-   "queryLines": [
-    "select category, counterparty_clean, direction, txns, total, reason from __CATALOG__.gold.review_queue order by case when category = 'human-intervention-required' then 0 else 1 end, total desc"
+    "select account_id, currency, category, counterparty_clean, direction, txns, total, reason from __CATALOG__.gold.review_queue order by total desc"
    ]
   }
  ],
  "pages": [
   {
-   "name": "page_overview",
+   "name": "card_overview",
    "displayName": "Overview",
    "layout": [
     {
      "widget": {
-      "name": "txt_over",
-      "textbox_spec": "# __COMPANY__ Finance\n**Cash, outflow and runway** from the bank statements loaded so far. Every figure is a SQL view on `gold`; nothing here is generated by a model."
+      "name": "card_intro",
+      "textbox_spec": "# __COMPANY__ Credit Cards\nUSD statement balances owed and transaction activity. Payments reduce debt; refunds offset spending. Figures cover the loaded statements, not a live card balance."
      },
      "position": {
       "x": 0,
@@ -146,16 +83,16 @@
     },
     {
      "widget": {
-      "name": "k_cash",
+      "name": "card_debt",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_kpis",
+         "datasetName": "card_kpis",
          "fields": [
           {
-           "name": "cash",
-           "expression": "SUM(`cash`)"
+           "name": "balance_owed",
+           "expression": "SUM(`balance_owed`)"
           }
          ],
          "disaggregated": false
@@ -167,21 +104,21 @@
        "widgetType": "counter",
        "frame": {
         "showTitle": true,
-        "title": "Cash in bank"
+        "title": "Latest statement balance owed (USD)"
        },
        "encodings": {
         "value": {
-         "fieldName": "cash",
+         "fieldName": "balance_owed",
          "format": {
           "type": "number-currency",
-          "currencyCode": "INR",
+          "currencyCode": "USD",
           "abbreviation": "compact",
           "decimalPlaces": {
            "type": "max",
            "places": 2
           }
          },
-         "displayName": "Cash in bank"
+         "displayName": "Latest statement balance owed (USD)"
         }
        }
       }
@@ -189,22 +126,22 @@
      "position": {
       "x": 0,
       "y": 2,
-      "width": 2,
+      "width": 3,
       "height": 3
      }
     },
     {
      "widget": {
-      "name": "k_out",
+      "name": "card_net",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_kpis",
+         "datasetName": "card_kpis",
          "fields": [
           {
-           "name": "monthly_outflow",
-           "expression": "SUM(`monthly_outflow`)"
+           "name": "net_spending",
+           "expression": "SUM(`net_spending`)"
           }
          ],
          "disaggregated": false
@@ -216,44 +153,44 @@
        "widgetType": "counter",
        "frame": {
         "showTitle": true,
-        "title": "Monthly outflow (last 3 full months)"
+        "title": "Net spending across loaded activity (USD)"
        },
        "encodings": {
         "value": {
-         "fieldName": "monthly_outflow",
+         "fieldName": "net_spending",
          "format": {
           "type": "number-currency",
-          "currencyCode": "INR",
+          "currencyCode": "USD",
           "abbreviation": "compact",
           "decimalPlaces": {
            "type": "max",
            "places": 2
           }
          },
-         "displayName": "Monthly outflow (last 3 full months)"
+         "displayName": "Net spending across loaded activity (USD)"
         }
        }
       }
      },
      "position": {
-      "x": 2,
+      "x": 3,
       "y": 2,
-      "width": 2,
+      "width": 3,
       "height": 3
      }
     },
     {
      "widget": {
-      "name": "k_run",
+      "name": "card_paid",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_kpis",
+         "datasetName": "card_kpis",
          "fields": [
           {
-           "name": "runway_months",
-           "expression": "SUM(`runway_months`)"
+           "name": "payments",
+           "expression": "SUM(`payments`)"
           }
          ],
          "disaggregated": false
@@ -265,69 +202,21 @@
        "widgetType": "counter",
        "frame": {
         "showTitle": true,
-        "title": "Runway (months, no new money)"
+        "title": "Payments across loaded activity (USD)"
        },
        "encodings": {
         "value": {
-         "fieldName": "runway_months",
-         "format": {
-          "type": "number",
-          "abbreviation": "none",
-          "decimalPlaces": {
-           "type": "max",
-           "places": 1
-          }
-         },
-         "displayName": "Runway (months, no new money)"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 4,
-      "y": 2,
-      "width": 2,
-      "height": 3
-     }
-    },
-    {
-     "widget": {
-      "name": "k_fund",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_kpis",
-         "fields": [
-          {
-           "name": "funding_received",
-           "expression": "SUM(`funding_received`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 2,
-       "widgetType": "counter",
-       "frame": {
-        "showTitle": true,
-        "title": "Funding received, 2026"
-       },
-       "encodings": {
-        "value": {
-         "fieldName": "funding_received",
+         "fieldName": "payments",
          "format": {
           "type": "number-currency",
-          "currencyCode": "INR",
+          "currencyCode": "USD",
           "abbreviation": "compact",
           "decimalPlaces": {
            "type": "max",
            "places": 2
           }
          },
-         "displayName": "Funding received, 2026"
+         "displayName": "Payments across loaded activity (USD)"
         }
        }
       }
@@ -341,16 +230,16 @@
     },
     {
      "widget": {
-      "name": "k_rec",
+      "name": "card_cost",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_kpis",
+         "datasetName": "card_kpis",
          "fields": [
           {
-           "name": "client_receipts",
-           "expression": "SUM(`client_receipts`)"
+           "name": "fees_and_interest",
+           "expression": "SUM(`fees_and_interest`)"
           }
          ],
          "disaggregated": false
@@ -362,21 +251,21 @@
        "widgetType": "counter",
        "frame": {
         "showTitle": true,
-        "title": "Client receipts, 2026"
+        "title": "Fees and interest (USD)"
        },
        "encodings": {
         "value": {
-         "fieldName": "client_receipts",
+         "fieldName": "fees_and_interest",
          "format": {
           "type": "number-currency",
-          "currencyCode": "INR",
+          "currencyCode": "USD",
           "abbreviation": "compact",
           "decimalPlaces": {
            "type": "max",
            "places": 2
           }
          },
-         "displayName": "Client receipts, 2026"
+         "displayName": "Fees and interest (USD)"
         }
        }
       }
@@ -390,232 +279,20 @@
     },
     {
      "widget": {
-      "name": "c_in",
+      "name": "card_asof",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_in",
+         "datasetName": "card_kpis",
          "fields": [
           {
-           "name": "month",
-           "expression": "`month`"
+           "name": "oldest_account_as_of",
+           "expression": "`oldest_account_as_of`"
           },
           {
-           "name": "sum(amount)",
-           "expression": "SUM(`amount`)"
-          },
-          {
-           "name": "measure",
-           "expression": "`measure`"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "bar",
-       "frame": {
-        "showTitle": true,
-        "title": "Money in by month"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "month",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "Month"
-        },
-        "y": {
-         "fieldName": "sum(amount)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Amount (INR)"
-        },
-        "color": {
-         "fieldName": "measure",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "measure"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 8,
-      "width": 3,
-      "height": 6
-     }
-    },
-    {
-     "widget": {
-      "name": "c_out",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_out",
-         "fields": [
-          {
-           "name": "month",
-           "expression": "`month`"
-          },
-          {
-           "name": "sum(amount)",
-           "expression": "SUM(`amount`)"
-          },
-          {
-           "name": "measure",
-           "expression": "`measure`"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "bar",
-       "frame": {
-        "showTitle": true,
-        "title": "Money out by month"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "month",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "Month"
-        },
-        "y": {
-         "fieldName": "sum(amount)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Amount (INR)"
-        },
-        "color": {
-         "fieldName": "measure",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "measure"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 3,
-      "y": 8,
-      "width": 3,
-      "height": 6
-     }
-    },
-    {
-     "widget": {
-      "name": "c_bal",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_monthly",
-         "fields": [
-          {
-           "name": "month",
-           "expression": "`month`"
-          },
-          {
-           "name": "sum(closing_balance)",
-           "expression": "SUM(`closing_balance`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "line",
-       "frame": {
-        "showTitle": true,
-        "title": "Closing balance by month (bank figure)"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "month",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "Month"
-        },
-        "y": {
-         "fieldName": "sum(closing_balance)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Balance (INR)"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 14,
-      "width": 6,
-      "height": 5
-     }
-    },
-    {
-     "widget": {
-      "name": "t_monthly",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_monthly",
-         "fields": [
-          {
-           "name": "month",
-           "expression": "`month`"
-          },
-          {
-           "name": "client_receipts",
-           "expression": "`client_receipts`"
-          },
-          {
-           "name": "funding_in",
-           "expression": "`funding_in`"
-          },
-          {
-           "name": "other_in",
-           "expression": "`other_in`"
-          },
-          {
-           "name": "operating_spend",
-           "expression": "`operating_spend`"
-          },
-          {
-           "name": "founder_payout",
-           "expression": "`founder_payout`"
-          },
-          {
-           "name": "total_outflow",
-           "expression": "`total_outflow`"
-          },
-          {
-           "name": "closing_balance",
-           "expression": "`closing_balance`"
-          },
-          {
-           "name": "month_type",
-           "expression": "`month_type`"
+           "name": "latest_account_as_of",
+           "expression": "`latest_account_as_of`"
           }
          ],
          "disaggregated": true
@@ -633,7 +310,191 @@
        "paginationSize": "default",
        "frame": {
         "showTitle": true,
-        "title": "Monthly cash flow (the data behind the three charts)"
+        "title": "Balance dates across accounts"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "oldest_account_as_of",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "string",
+          "displayAs": "string",
+          "visible": true,
+          "order": 0,
+          "title": "Oldest account statement date",
+          "allowSearch": false,
+          "alignContent": "left",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Oldest account statement date"
+         },
+         {
+          "fieldName": "latest_account_as_of",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "string",
+          "displayAs": "string",
+          "visible": true,
+          "order": 1,
+          "title": "Latest account statement date",
+          "allowSearch": false,
+          "alignContent": "left",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Latest account statement date"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 8,
+      "width": 6,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "card_trend",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "card_monthly",
+         "fields": [
+          {
+           "name": "month",
+           "expression": "`month`"
+          },
+          {
+           "name": "sum(net_spending)",
+           "expression": "SUM(`net_spending`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "frame": {
+        "showTitle": true,
+        "title": "Net spending by transaction month"
+       },
+       "encodings": {
+        "x": {
+         "fieldName": "month",
+         "scale": {
+          "type": "categorical"
+         },
+         "displayName": "month"
+        },
+        "y": {
+         "fieldName": "sum(net_spending)",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "Amount (USD)"
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 11,
+      "width": 6,
+      "height": 6
+     }
+    },
+    {
+     "widget": {
+      "name": "card_month_table",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "card_monthly",
+         "fields": [
+          {
+           "name": "month",
+           "expression": "`month`"
+          },
+          {
+           "name": "purchases",
+           "expression": "`purchases`"
+          },
+          {
+           "name": "refunds",
+           "expression": "`refunds`"
+          },
+          {
+           "name": "payments",
+           "expression": "`payments`"
+          },
+          {
+           "name": "fees",
+           "expression": "`fees`"
+          },
+          {
+           "name": "interest",
+           "expression": "`interest`"
+          },
+          {
+           "name": "cash_advances",
+           "expression": "`cash_advances`"
+          },
+          {
+           "name": "balance_transfers",
+           "expression": "`balance_transfers`"
+          },
+          {
+           "name": "net_spending",
+           "expression": "`net_spending`"
+          }
+         ],
+         "disaggregated": true
+        }
+       }
+      ],
+      "spec": {
+       "version": 1,
+       "widgetType": "table",
+       "allowHTMLByDefault": false,
+       "itemsPerPage": 25,
+       "condensed": true,
+       "withRowNumber": false,
+       "invisibleColumns": [],
+       "paginationSize": "default",
+       "frame": {
+        "showTitle": true,
+        "title": "Monthly activity"
        },
        "encodings": {
         "columns": [
@@ -655,17 +516,17 @@
           "displayAs": "string",
           "visible": true,
           "order": 0,
-          "title": "Month",
+          "title": "Transaction month",
           "allowSearch": false,
           "alignContent": "left",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Month"
+          "displayName": "Transaction month"
          },
          {
-          "fieldName": "client_receipts",
+          "fieldName": "purchases",
           "booleanValues": [
            "false",
            "true"
@@ -682,18 +543,18 @@
           "displayAs": "number",
           "visible": true,
           "order": 1,
-          "title": "Client receipts",
+          "title": "Purchases / other charges (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Client receipts",
+          "displayName": "Purchases / other charges (USD)",
           "numberFormat": "0.00"
          },
          {
-          "fieldName": "funding_in",
+          "fieldName": "refunds",
           "booleanValues": [
            "false",
            "true"
@@ -710,18 +571,18 @@
           "displayAs": "number",
           "visible": true,
           "order": 2,
-          "title": "Funding",
+          "title": "Refunds (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Funding",
+          "displayName": "Refunds (USD)",
           "numberFormat": "0.00"
          },
          {
-          "fieldName": "other_in",
+          "fieldName": "payments",
           "booleanValues": [
            "false",
            "true"
@@ -738,18 +599,18 @@
           "displayAs": "number",
           "visible": true,
           "order": 3,
-          "title": "Other credits",
+          "title": "Payments (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Other credits",
+          "displayName": "Payments (USD)",
           "numberFormat": "0.00"
          },
          {
-          "fieldName": "operating_spend",
+          "fieldName": "fees",
           "booleanValues": [
            "false",
            "true"
@@ -766,18 +627,18 @@
           "displayAs": "number",
           "visible": true,
           "order": 4,
-          "title": "Operating spend",
+          "title": "Fees (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Operating spend",
+          "displayName": "Fees (USD)",
           "numberFormat": "0.00"
          },
          {
-          "fieldName": "founder_payout",
+          "fieldName": "interest",
           "booleanValues": [
            "false",
            "true"
@@ -794,18 +655,18 @@
           "displayAs": "number",
           "visible": true,
           "order": 5,
-          "title": "Founder payout",
+          "title": "Interest (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Founder payout",
+          "displayName": "Interest (USD)",
           "numberFormat": "0.00"
          },
          {
-          "fieldName": "total_outflow",
+          "fieldName": "cash_advances",
           "booleanValues": [
            "false",
            "true"
@@ -822,18 +683,18 @@
           "displayAs": "number",
           "visible": true,
           "order": 6,
-          "title": "Total out",
+          "title": "Advances (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Total out",
+          "displayName": "Advances (USD)",
           "numberFormat": "0.00"
          },
          {
-          "fieldName": "closing_balance",
+          "fieldName": "balance_transfers",
           "booleanValues": [
            "false",
            "true"
@@ -850,18 +711,18 @@
           "displayAs": "number",
           "visible": true,
           "order": 7,
-          "title": "Closing balance",
+          "title": "Balance transfers (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Closing balance",
+          "displayName": "Balance transfers (USD)",
           "numberFormat": "0.00"
          },
          {
-          "fieldName": "month_type",
+          "fieldName": "net_spending",
           "booleanValues": [
            "false",
            "true"
@@ -874,18 +735,19 @@
           "linkTextTemplate": "{{ @ }}",
           "linkTitleTemplate": "{{ @ }}",
           "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
+          "type": "float",
+          "displayAs": "number",
           "visible": true,
           "order": 8,
-          "title": "Month",
+          "title": "Net spending (USD)",
           "allowSearch": false,
-          "alignContent": "left",
+          "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Month"
+          "displayName": "Net spending (USD)",
+          "numberFormat": "0.00"
          }
         ]
        }
@@ -893,486 +755,47 @@
      },
      "position": {
       "x": 0,
-      "y": 19,
+      "y": 17,
       "width": 6,
       "height": 7
      }
     },
     {
      "widget": {
-      "name": "txt_def",
-      "textbox_spec": "**Definitions.** Cash is the bank's closing balance on the latest statement. Monthly outflow is the mean of all debits, founder payouts included, over the last three full months; the current partial month is left out. Runway is cash divided by that outflow. Funding is money from founders and the investor; it is kept apart from client income."
-     },
-     "position": {
-      "x": 0,
-      "y": 26,
-      "width": 6,
-      "height": 2
-     }
-    }
-   ]
-  },
-  {
-   "name": "page_range",
-   "displayName": "Cash flow by date",
-   "layout": [
-    {
-     "widget": {
-      "name": "txt_range",
-      "textbox_spec": "# Cash flow by date\nPick a date range. Every figure, chart and the payment list on this page follows it. Money in and out are the bank's own credits and debits; the balance is the bank's running balance after the last payment of each day."
-     },
-     "position": {
-      "x": 0,
-      "y": 0,
-      "width": 6,
-      "height": 2
-     }
-    },
-    {
-     "widget": {
-      "name": "f_range",
-      "queries": [
-       {
-        "name": "q_ds_dr_flow",
-        "query": {
-         "datasetName": "ds_dr_flow",
-         "fields": [
-          {
-           "name": "txn_date",
-           "expression": "`txn_date`"
-          }
-         ],
-         "disaggregated": false
-        }
-       },
-       {
-        "name": "q_ds_dr_long",
-        "query": {
-         "datasetName": "ds_dr_long",
-         "fields": [
-          {
-           "name": "txn_date",
-           "expression": "`txn_date`"
-          }
-         ],
-         "disaggregated": false
-        }
-       },
-       {
-        "name": "q_ds_dr_bal",
-        "query": {
-         "datasetName": "ds_dr_bal",
-         "fields": [
-          {
-           "name": "txn_date",
-           "expression": "`txn_date`"
-          }
-         ],
-         "disaggregated": false
-        }
-       },
-       {
-        "name": "q_ds_dr_tx",
-        "query": {
-         "datasetName": "ds_dr_tx",
-         "fields": [
-          {
-           "name": "txn_date",
-           "expression": "`txn_date`"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 2,
-       "widgetType": "filter-date-range-picker",
-       "encodings": {
-        "fields": [
-         {
-          "fieldName": "txn_date",
-          "displayName": "Date",
-          "queryName": "q_ds_dr_flow"
-         },
-         {
-          "fieldName": "txn_date",
-          "displayName": "Date",
-          "queryName": "q_ds_dr_long"
-         },
-         {
-          "fieldName": "txn_date",
-          "displayName": "Date",
-          "queryName": "q_ds_dr_bal"
-         },
-         {
-          "fieldName": "txn_date",
-          "displayName": "Date",
-          "queryName": "q_ds_dr_tx"
-         }
-        ]
-       },
-       "frame": {
-        "showTitle": true,
-        "title": "Date range"
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 2,
-      "width": 6,
-      "height": 2
-     }
-    },
-    {
-     "widget": {
-      "name": "k_in",
+      "name": "card_statement_table",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_dr_flow",
+         "datasetName": "card_balances",
          "fields": [
           {
-           "name": "money_in",
-           "expression": "SUM(`money_in`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 2,
-       "widgetType": "counter",
-       "frame": {
-        "showTitle": true,
-        "title": "Money in"
-       },
-       "encodings": {
-        "value": {
-         "fieldName": "money_in",
-         "format": {
-          "type": "number-currency",
-          "currencyCode": "INR",
-          "abbreviation": "compact",
-          "decimalPlaces": {
-           "type": "max",
-           "places": 2
-          }
-         },
-         "displayName": "Money in"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 4,
-      "width": 2,
-      "height": 3
-     }
-    },
-    {
-     "widget": {
-      "name": "k_out",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_dr_flow",
-         "fields": [
-          {
-           "name": "money_out",
-           "expression": "SUM(`money_out`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 2,
-       "widgetType": "counter",
-       "frame": {
-        "showTitle": true,
-        "title": "Money out"
-       },
-       "encodings": {
-        "value": {
-         "fieldName": "money_out",
-         "format": {
-          "type": "number-currency",
-          "currencyCode": "INR",
-          "abbreviation": "compact",
-          "decimalPlaces": {
-           "type": "max",
-           "places": 2
-          }
-         },
-         "displayName": "Money out"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 2,
-      "y": 4,
-      "width": 2,
-      "height": 3
-     }
-    },
-    {
-     "widget": {
-      "name": "k_net",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_dr_flow",
-         "fields": [
-          {
-           "name": "net",
-           "expression": "SUM(`net`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 2,
-       "widgetType": "counter",
-       "frame": {
-        "showTitle": true,
-        "title": "Net change"
-       },
-       "encodings": {
-        "value": {
-         "fieldName": "net",
-         "format": {
-          "type": "number-currency",
-          "currencyCode": "INR",
-          "abbreviation": "compact",
-          "decimalPlaces": {
-           "type": "max",
-           "places": 2
-          }
-         },
-         "displayName": "Net change"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 4,
-      "y": 4,
-      "width": 2,
-      "height": 3
-     }
-    },
-    {
-     "widget": {
-      "name": "c_weekly",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_dr_long",
-         "fields": [
-          {
-           "name": "weekly(txn_date)",
-           "expression": "DATE_TRUNC(\"WEEK\", `txn_date`)"
+           "name": "account_id",
+           "expression": "`account_id`"
           },
           {
-           "name": "sum(amount)",
-           "expression": "SUM(`amount`)"
+           "name": "period_from",
+           "expression": "`period_from`"
           },
           {
-           "name": "measure",
-           "expression": "`measure`"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "bar",
-       "frame": {
-        "showTitle": true,
-        "title": "Money in and out by week"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "weekly(txn_date)",
-         "scale": {
-          "type": "temporal"
-         },
-         "displayName": "Date"
-        },
-        "y": {
-         "fieldName": "sum(amount)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Amount (INR)"
-        },
-        "color": {
-         "fieldName": "measure",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "measure"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 7,
-      "width": 3,
-      "height": 6
-     }
-    },
-    {
-     "widget": {
-      "name": "c_bal",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_dr_bal",
-         "fields": [
-          {
-           "name": "daily(txn_date)",
-           "expression": "DATE_TRUNC(\"DAY\", `txn_date`)"
+           "name": "period_to",
+           "expression": "`period_to`"
           },
           {
-           "name": "sum(closing_balance)",
-           "expression": "SUM(`closing_balance`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "line",
-       "frame": {
-        "showTitle": true,
-        "title": "Closing balance by day"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "daily(txn_date)",
-         "scale": {
-          "type": "temporal"
-         },
-         "displayName": "Date"
-        },
-        "y": {
-         "fieldName": "sum(closing_balance)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Balance (INR)"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 3,
-      "y": 7,
-      "width": 3,
-      "height": 6
-     }
-    },
-    {
-     "widget": {
-      "name": "c_cat_out",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_dr_flow",
-         "fields": [
-          {
-           "name": "category",
-           "expression": "`category`"
+           "name": "opening_balance",
+           "expression": "`opening_balance`"
           },
           {
-           "name": "sum(money_out)",
-           "expression": "SUM(`money_out`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "bar",
-       "frame": {
-        "showTitle": true,
-        "title": "Money out by category"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "category",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "Category"
-        },
-        "y": {
-         "fieldName": "sum(money_out)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Money out (INR)"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 13,
-      "width": 3,
-      "height": 6
-     }
-    },
-    {
-     "widget": {
-      "name": "t_dr_flow",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_dr_flow",
-         "fields": [
-          {
-           "name": "category",
-           "expression": "`category`"
+           "name": "balance_owed",
+           "expression": "`balance_owed`"
           },
           {
-           "name": "category_type",
-           "expression": "`category_type`"
+           "name": "charges",
+           "expression": "`charges`"
           },
           {
-           "name": "txns",
-           "expression": "`txns`"
-          },
-          {
-           "name": "money_in",
-           "expression": "`money_in`"
-          },
-          {
-           "name": "money_out",
-           "expression": "`money_out`"
+           "name": "payments_and_credits",
+           "expression": "`payments_and_credits`"
           }
          ],
          "disaggregated": true
@@ -1390,7 +813,324 @@
        "paginationSize": "default",
        "frame": {
         "showTitle": true,
-        "title": "Money in and out by category (the data behind the chart)"
+        "title": "Reconciled statement balances"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "account_id",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "string",
+          "displayAs": "string",
+          "visible": true,
+          "order": 0,
+          "title": "Account key",
+          "allowSearch": false,
+          "alignContent": "left",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Account key"
+         },
+         {
+          "fieldName": "period_from",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "string",
+          "displayAs": "string",
+          "visible": true,
+          "order": 1,
+          "title": "Period start",
+          "allowSearch": false,
+          "alignContent": "left",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Period start"
+         },
+         {
+          "fieldName": "period_to",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "string",
+          "displayAs": "string",
+          "visible": true,
+          "order": 2,
+          "title": "Period end",
+          "allowSearch": false,
+          "alignContent": "left",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Period end"
+         },
+         {
+          "fieldName": "opening_balance",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "float",
+          "displayAs": "number",
+          "visible": true,
+          "order": 3,
+          "title": "Previous balance (USD)",
+          "allowSearch": false,
+          "alignContent": "right",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Previous balance (USD)",
+          "numberFormat": "0.00"
+         },
+         {
+          "fieldName": "balance_owed",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "float",
+          "displayAs": "number",
+          "visible": true,
+          "order": 4,
+          "title": "New balance owed (USD)",
+          "allowSearch": false,
+          "alignContent": "right",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "New balance owed (USD)",
+          "numberFormat": "0.00"
+         },
+         {
+          "fieldName": "charges",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "float",
+          "displayAs": "number",
+          "visible": true,
+          "order": 5,
+          "title": "Charges (USD)",
+          "allowSearch": false,
+          "alignContent": "right",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Charges (USD)",
+          "numberFormat": "0.00"
+         },
+         {
+          "fieldName": "payments_and_credits",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "float",
+          "displayAs": "number",
+          "visible": true,
+          "order": 6,
+          "title": "Payments / credits (USD)",
+          "allowSearch": false,
+          "alignContent": "right",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Payments / credits (USD)",
+          "numberFormat": "0.00"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 24,
+      "width": 6,
+      "height": 7
+     }
+    }
+   ]
+  },
+  {
+   "name": "card_spending",
+   "displayName": "Spending",
+   "layout": [
+    {
+     "widget": {
+      "name": "card_spend_intro",
+      "textbox_spec": "# Spending in USD\nPurchases, fees and interest less refunds. Payments, advances and explicitly identified balance transfers are excluded. Review other charges and unclassified merchants."
+     },
+     "position": {
+      "x": 0,
+      "y": 0,
+      "width": 6,
+      "height": 2
+     }
+    },
+    {
+     "widget": {
+      "name": "card_category_chart",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "card_spend",
+         "fields": [
+          {
+           "name": "category",
+           "expression": "`category`"
+          },
+          {
+           "name": "sum(amount)",
+           "expression": "SUM(`amount`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "frame": {
+        "showTitle": true,
+        "title": "Net spending by category"
+       },
+       "encodings": {
+        "x": {
+         "fieldName": "category",
+         "scale": {
+          "type": "categorical"
+         },
+         "displayName": "category"
+        },
+        "y": {
+         "fieldName": "sum(amount)",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "Amount (USD)"
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 2,
+      "width": 6,
+      "height": 6
+     }
+    },
+    {
+     "widget": {
+      "name": "card_category_table",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "card_spend",
+         "fields": [
+          {
+           "name": "category",
+           "expression": "`category`"
+          },
+          {
+           "name": "txns",
+           "expression": "`txns`"
+          },
+          {
+           "name": "amount",
+           "expression": "`amount`"
+          }
+         ],
+         "disaggregated": true
+        }
+       }
+      ],
+      "spec": {
+       "version": 1,
+       "widgetType": "table",
+       "allowHTMLByDefault": false,
+       "itemsPerPage": 25,
+       "condensed": true,
+       "withRowNumber": false,
+       "invisibleColumns": [],
+       "paginationSize": "default",
+       "frame": {
+        "showTitle": true,
+        "title": "Spending detail"
        },
        "encodings": {
         "columns": [
@@ -1422,33 +1162,6 @@
           "displayName": "Category"
          },
          {
-          "fieldName": "category_type",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Type",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Type"
-         },
-         {
           "fieldName": "txns",
           "booleanValues": [
            "false",
@@ -1465,70 +1178,42 @@
           "type": "integer",
           "displayAs": "number",
           "visible": true,
+          "order": 1,
+          "title": "Transactions",
+          "allowSearch": false,
+          "alignContent": "right",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Transactions"
+         },
+         {
+          "fieldName": "amount",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "float",
+          "displayAs": "number",
+          "visible": true,
           "order": 2,
-          "title": "Payments",
+          "title": "Net spending (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Payments"
-         },
-         {
-          "fieldName": "money_in",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 3,
-          "title": "Money in (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Money in (INR)",
-          "numberFormat": "0.00"
-         },
-         {
-          "fieldName": "money_out",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 4,
-          "title": "Money out (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Money out (INR)",
+          "displayName": "Net spending (USD)",
           "numberFormat": "0.00"
          }
         ]
@@ -1536,36 +1221,253 @@
       }
      },
      "position": {
-      "x": 3,
-      "y": 13,
+      "x": 0,
+      "y": 8,
+      "width": 6,
+      "height": 7
+     }
+    }
+   ]
+  },
+  {
+   "name": "card_transactions",
+   "displayName": "Transactions",
+   "layout": [
+    {
+     "widget": {
+      "name": "card_activity_intro",
+      "textbox_spec": "# Transactions\nFilter by transaction date. A positive debt change increases the amount owed. Statement dates and posting dates can differ from transaction dates."
+     },
+     "position": {
+      "x": 0,
+      "y": 0,
+      "width": 6,
+      "height": 2
+     }
+    },
+    {
+     "widget": {
+      "name": "card_date_filter",
+      "queries": [
+       {
+        "name": "q_card_activity",
+        "query": {
+         "datasetName": "card_activity",
+         "fields": [
+          {
+           "name": "txn_date",
+           "expression": "`txn_date`"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "filter-date-range-picker",
+       "encodings": {
+        "fields": [
+         {
+          "fieldName": "txn_date",
+          "displayName": "Date",
+          "queryName": "q_card_activity"
+         }
+        ]
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "Date range"
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 2,
+      "width": 6,
+      "height": 2
+     }
+    },
+    {
+     "widget": {
+      "name": "card_range_spend",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "card_activity",
+         "fields": [
+          {
+           "name": "spending_amount",
+           "expression": "SUM(`spending_amount`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "counter",
+       "frame": {
+        "showTitle": true,
+        "title": "Net spending in selected range (USD)"
+       },
+       "encodings": {
+        "value": {
+         "fieldName": "spending_amount",
+         "format": {
+          "type": "number-currency",
+          "currencyCode": "USD",
+          "abbreviation": "compact",
+          "decimalPlaces": {
+           "type": "max",
+           "places": 2
+          }
+         },
+         "displayName": "Net spending in selected range (USD)"
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 4,
       "width": 3,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "card_range_debt",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "card_activity",
+         "fields": [
+          {
+           "name": "debt_change",
+           "expression": "SUM(`debt_change`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "counter",
+       "frame": {
+        "showTitle": true,
+        "title": "Debt change in selected range (USD)"
+       },
+       "encodings": {
+        "value": {
+         "fieldName": "debt_change",
+         "format": {
+          "type": "number-currency",
+          "currencyCode": "USD",
+          "abbreviation": "compact",
+          "decimalPlaces": {
+           "type": "max",
+           "places": 2
+          }
+         },
+         "displayName": "Debt change in selected range (USD)"
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 3,
+      "y": 4,
+      "width": 3,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "card_week_chart",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "card_activity",
+         "fields": [
+          {
+           "name": "weekly(txn_date)",
+           "expression": "DATE_TRUNC(\"WEEK\", `txn_date`)"
+          },
+          {
+           "name": "sum(spending_amount)",
+           "expression": "SUM(`spending_amount`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "frame": {
+        "showTitle": true,
+        "title": "Net spending by week"
+       },
+       "encodings": {
+        "x": {
+         "fieldName": "weekly(txn_date)",
+         "scale": {
+          "type": "temporal"
+         },
+         "displayName": "Date"
+        },
+        "y": {
+         "fieldName": "sum(spending_amount)",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "Amount (USD)"
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 7,
+      "width": 6,
       "height": 6
      }
     },
     {
      "widget": {
-      "name": "t_dr_tx",
+      "name": "card_transaction_table",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_dr_tx",
+         "datasetName": "card_activity",
          "fields": [
           {
            "name": "day",
            "expression": "`day`"
           },
           {
+           "name": "account_id",
+           "expression": "`account_id`"
+          },
+          {
            "name": "counterparty_clean",
            "expression": "`counterparty_clean`"
           },
           {
-           "name": "category",
-           "expression": "`category`"
+           "name": "activity_type",
+           "expression": "`activity_type`"
           },
           {
-           "name": "direction",
-           "expression": "`direction`"
+           "name": "category",
+           "expression": "`category`"
           },
           {
            "name": "amount",
@@ -1587,7 +1489,7 @@
        "paginationSize": "default",
        "frame": {
         "showTitle": true,
-        "title": "Payments in the range"
+        "title": "Transactions in selected range"
        },
        "encodings": {
         "columns": [
@@ -1619,6 +1521,33 @@
           "displayName": "Date"
          },
          {
+          "fieldName": "account_id",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "string",
+          "displayAs": "string",
+          "visible": true,
+          "order": 1,
+          "title": "Account key",
+          "allowSearch": false,
+          "alignContent": "left",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Account key"
+         },
+         {
           "fieldName": "counterparty_clean",
           "booleanValues": [
            "false",
@@ -1635,15 +1564,42 @@
           "type": "string",
           "displayAs": "string",
           "visible": true,
-          "order": 1,
-          "title": "Payee",
+          "order": 2,
+          "title": "Merchant",
           "allowSearch": false,
           "alignContent": "left",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Payee"
+          "displayName": "Merchant"
+         },
+         {
+          "fieldName": "activity_type",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "string",
+          "displayAs": "string",
+          "visible": true,
+          "order": 3,
+          "title": "Activity",
+          "allowSearch": false,
+          "alignContent": "left",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Activity"
          },
          {
           "fieldName": "category",
@@ -1662,7 +1618,7 @@
           "type": "string",
           "displayAs": "string",
           "visible": true,
-          "order": 2,
+          "order": 4,
           "title": "Category",
           "allowSearch": false,
           "alignContent": "left",
@@ -1671,33 +1627,6 @@
           "useMonospaceFont": false,
           "preserveWhitespace": false,
           "displayName": "Category"
-         },
-         {
-          "fieldName": "direction",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 3,
-          "title": "Direction",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Direction"
          },
          {
           "fieldName": "amount",
@@ -1716,15 +1645,15 @@
           "type": "float",
           "displayAs": "number",
           "visible": true,
-          "order": 4,
-          "title": "Amount (INR)",
+          "order": 5,
+          "title": "Amount (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Amount (INR)",
+          "displayName": "Amount (USD)",
           "numberFormat": "0.00"
          }
         ]
@@ -1733,7 +1662,7 @@
      },
      "position": {
       "x": 0,
-      "y": 19,
+      "y": 13,
       "width": 6,
       "height": 9
      }
@@ -1741,1232 +1670,13 @@
    ]
   },
   {
-   "name": "page_spend",
-   "displayName": "Spend",
-   "layout": [
-    {
-     "widget": {
-      "name": "txt_spend",
-      "textbox_spec": "# Where the money went\nAll debits, January to October 2026, by category. `unclassified` and `human-intervention-required` are not labelled yet."
-     },
-     "position": {
-      "x": 0,
-      "y": 0,
-      "width": 6,
-      "height": 2
-     }
-    },
-    {
-     "widget": {
-      "name": "c_cat",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_cat",
-         "fields": [
-          {
-           "name": "category",
-           "expression": "`category`"
-          },
-          {
-           "name": "sum(amount)",
-           "expression": "SUM(`amount`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "bar",
-       "frame": {
-        "showTitle": true,
-        "title": "Spend by category"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "category",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "Category"
-        },
-        "y": {
-         "fieldName": "sum(amount)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Amount (INR)"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 2,
-      "width": 6,
-      "height": 7
-     }
-    },
-    {
-     "widget": {
-      "name": "t_cat",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_cat",
-         "fields": [
-          {
-           "name": "category",
-           "expression": "`category`"
-          },
-          {
-           "name": "category_type",
-           "expression": "`category_type`"
-          },
-          {
-           "name": "txns",
-           "expression": "`txns`"
-          },
-          {
-           "name": "amount",
-           "expression": "`amount`"
-          }
-         ],
-         "disaggregated": true
-        }
-       }
-      ],
-      "spec": {
-       "version": 1,
-       "widgetType": "table",
-       "allowHTMLByDefault": false,
-       "itemsPerPage": 25,
-       "condensed": true,
-       "withRowNumber": false,
-       "invisibleColumns": [],
-       "paginationSize": "default",
-       "frame": {
-        "showTitle": true,
-        "title": "Spend by category (the data behind the chart)"
-       },
-       "encodings": {
-        "columns": [
-         {
-          "fieldName": "category",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 0,
-          "title": "Category",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Category"
-         },
-         {
-          "fieldName": "category_type",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Type",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Type"
-         },
-         {
-          "fieldName": "txns",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "integer",
-          "displayAs": "number",
-          "visible": true,
-          "order": 2,
-          "title": "Payments",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Payments"
-         },
-         {
-          "fieldName": "amount",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 3,
-          "title": "Amount (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Amount (INR)",
-          "numberFormat": "0.00"
-         }
-        ]
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 9,
-      "width": 6,
-      "height": 8
-     }
-    },
-    {
-     "widget": {
-      "name": "c_catm",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_cat_month",
-         "fields": [
-          {
-           "name": "month",
-           "expression": "`month`"
-          },
-          {
-           "name": "sum(amount)",
-           "expression": "SUM(`amount`)"
-          },
-          {
-           "name": "category",
-           "expression": "`category`"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "bar",
-       "frame": {
-        "showTitle": true,
-        "title": "Spend by month and category"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "month",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "Month"
-        },
-        "y": {
-         "fieldName": "sum(amount)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Amount (INR)"
-        },
-        "color": {
-         "fieldName": "category",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "category"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 17,
-      "width": 6,
-      "height": 7
-     }
-    },
-    {
-     "widget": {
-      "name": "t_catm",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_cat_month",
-         "fields": [
-          {
-           "name": "month",
-           "expression": "`month`"
-          },
-          {
-           "name": "category",
-           "expression": "`category`"
-          },
-          {
-           "name": "category_type",
-           "expression": "`category_type`"
-          },
-          {
-           "name": "txns",
-           "expression": "`txns`"
-          },
-          {
-           "name": "amount",
-           "expression": "`amount`"
-          }
-         ],
-         "disaggregated": true
-        }
-       }
-      ],
-      "spec": {
-       "version": 1,
-       "widgetType": "table",
-       "allowHTMLByDefault": false,
-       "itemsPerPage": 25,
-       "condensed": true,
-       "withRowNumber": false,
-       "invisibleColumns": [],
-       "paginationSize": "default",
-       "frame": {
-        "showTitle": true,
-        "title": "Spend by month and category (the data behind the chart)"
-       },
-       "encodings": {
-        "columns": [
-         {
-          "fieldName": "month",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 0,
-          "title": "Month",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Month"
-         },
-         {
-          "fieldName": "category",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Category",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Category"
-         },
-         {
-          "fieldName": "category_type",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 2,
-          "title": "Type",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Type"
-         },
-         {
-          "fieldName": "txns",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "integer",
-          "displayAs": "number",
-          "visible": true,
-          "order": 3,
-          "title": "Payments",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Payments"
-         },
-         {
-          "fieldName": "amount",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 4,
-          "title": "Amount (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Amount (INR)",
-          "numberFormat": "0.00"
-         }
-        ]
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 24,
-      "width": 6,
-      "height": 8
-     }
-    }
-   ]
-  },
-  {
-   "name": "page_rec",
-   "displayName": "Recurring and yearly",
-   "layout": [
-    {
-     "widget": {
-      "name": "txt_rec",
-      "textbox_spec": "# Recurring and yearly payments\nFound from the statements by a fixed gap and amount test, plus rent and the auditor fee which fall once a year (declared in config). *Lapsed* means it was expected and no payment came. *Ended* is an engagement you told us has stopped."
-     },
-     "position": {
-      "x": 0,
-      "y": 0,
-      "width": 6,
-      "height": 3
-     }
-    },
-    {
-     "widget": {
-      "name": "t_rec",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_recurring",
-         "fields": [
-          {
-           "name": "payee",
-           "expression": "`payee`"
-          },
-          {
-           "name": "category",
-           "expression": "`category`"
-          },
-          {
-           "name": "cadence",
-           "expression": "`cadence`"
-          },
-          {
-           "name": "typical_amount",
-           "expression": "`typical_amount`"
-          },
-          {
-           "name": "last_seen",
-           "expression": "`last_seen`"
-          },
-          {
-           "name": "next_expected",
-           "expression": "`next_expected`"
-          },
-          {
-           "name": "status",
-           "expression": "`status`"
-          },
-          {
-           "name": "source",
-           "expression": "`source`"
-          }
-         ],
-         "disaggregated": true
-        }
-       }
-      ],
-      "spec": {
-       "version": 1,
-       "widgetType": "table",
-       "allowHTMLByDefault": false,
-       "itemsPerPage": 25,
-       "condensed": true,
-       "withRowNumber": false,
-       "invisibleColumns": [],
-       "paginationSize": "default",
-       "frame": {
-        "showTitle": true,
-        "title": "Recurring and yearly payments"
-       },
-       "encodings": {
-        "columns": [
-         {
-          "fieldName": "payee",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 0,
-          "title": "Payee",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Payee"
-         },
-         {
-          "fieldName": "category",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Category",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Category"
-         },
-         {
-          "fieldName": "cadence",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 2,
-          "title": "Repeats",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Repeats"
-         },
-         {
-          "fieldName": "typical_amount",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 3,
-          "title": "Amount (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Amount (INR)",
-          "numberFormat": "0.00"
-         },
-         {
-          "fieldName": "last_seen",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 4,
-          "title": "Last paid",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Last paid"
-         },
-         {
-          "fieldName": "next_expected",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 5,
-          "title": "Next due",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Next due"
-         },
-         {
-          "fieldName": "status",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 6,
-          "title": "Status",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Status"
-         },
-         {
-          "fieldName": "source",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 7,
-          "title": "Found by",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Found by"
-         }
-        ]
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 3,
-      "width": 6,
-      "height": 8
-     }
-    }
-   ]
-  },
-  {
-   "name": "page_fund",
-   "displayName": "Funding and founder",
-   "layout": [
-    {
-     "widget": {
-      "name": "txt_fund",
-      "textbox_spec": "# Funding and founder\nMoney put in by founders and the investor, and payments to the founder (shown as operations, no further split)."
-     },
-     "position": {
-      "x": 0,
-      "y": 0,
-      "width": 6,
-      "height": 2
-     }
-    },
-    {
-     "widget": {
-      "name": "c_fund",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_funding",
-         "fields": [
-          {
-           "name": "month",
-           "expression": "`month`"
-          },
-          {
-           "name": "sum(amount)",
-           "expression": "SUM(`amount`)"
-          },
-          {
-           "name": "category",
-           "expression": "`category`"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "bar",
-       "frame": {
-        "showTitle": true,
-        "title": "Funding received by month"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "month",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "Month"
-        },
-        "y": {
-         "fieldName": "sum(amount)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Amount (INR)"
-        },
-        "color": {
-         "fieldName": "category",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "category"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 2,
-      "width": 6,
-      "height": 6
-     }
-    },
-    {
-     "widget": {
-      "name": "t_fund",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_funding",
-         "fields": [
-          {
-           "name": "month",
-           "expression": "`month`"
-          },
-          {
-           "name": "category",
-           "expression": "`category`"
-          },
-          {
-           "name": "txns",
-           "expression": "`txns`"
-          },
-          {
-           "name": "amount",
-           "expression": "`amount`"
-          }
-         ],
-         "disaggregated": true
-        }
-       }
-      ],
-      "spec": {
-       "version": 1,
-       "widgetType": "table",
-       "allowHTMLByDefault": false,
-       "itemsPerPage": 25,
-       "condensed": true,
-       "withRowNumber": false,
-       "invisibleColumns": [],
-       "paginationSize": "default",
-       "frame": {
-        "showTitle": true,
-        "title": "Funding received (the data behind the chart)"
-       },
-       "encodings": {
-        "columns": [
-         {
-          "fieldName": "month",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 0,
-          "title": "Month",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Month"
-         },
-         {
-          "fieldName": "category",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Source",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Source"
-         },
-         {
-          "fieldName": "txns",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "integer",
-          "displayAs": "number",
-          "visible": true,
-          "order": 2,
-          "title": "Payments",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Payments"
-         },
-         {
-          "fieldName": "amount",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 3,
-          "title": "Amount (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Amount (INR)",
-          "numberFormat": "0.00"
-         }
-        ]
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 8,
-      "width": 6,
-      "height": 6
-     }
-    },
-    {
-     "widget": {
-      "name": "t_founder",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_founder",
-         "fields": [
-          {
-           "name": "month",
-           "expression": "`month`"
-          },
-          {
-           "name": "category",
-           "expression": "`category`"
-          },
-          {
-           "name": "paid_to_founder",
-           "expression": "`paid_to_founder`"
-          },
-          {
-           "name": "received_from_founder",
-           "expression": "`received_from_founder`"
-          }
-         ],
-         "disaggregated": true
-        }
-       }
-      ],
-      "spec": {
-       "version": 1,
-       "widgetType": "table",
-       "allowHTMLByDefault": false,
-       "itemsPerPage": 25,
-       "condensed": true,
-       "withRowNumber": false,
-       "invisibleColumns": [],
-       "paginationSize": "default",
-       "frame": {
-        "showTitle": true,
-        "title": "Founder payments and deposits"
-       },
-       "encodings": {
-        "columns": [
-         {
-          "fieldName": "month",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 0,
-          "title": "Month",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Month"
-         },
-         {
-          "fieldName": "category",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Category",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Category"
-         },
-         {
-          "fieldName": "paid_to_founder",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 2,
-          "title": "Paid to founder (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Paid to founder (INR)",
-          "numberFormat": "0.00"
-         },
-         {
-          "fieldName": "received_from_founder",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 3,
-          "title": "Received from founder (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Received from founder (INR)",
-          "numberFormat": "0.00"
-         }
-        ]
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 14,
-      "width": 6,
-      "height": 6
-     }
-    }
-   ]
-  },
-  {
-   "name": "page_dq",
+   "name": "card_quality",
    "displayName": "Data quality",
    "layout": [
     {
      "widget": {
-      "name": "txt_dq",
-      "textbox_spec": "# Data quality\nEvery statement is checked against the bank's own totals before it is loaded. Payments that no rule, payee list or Jev label could place with confidence are listed here for a person."
+      "name": "card_quality_intro",
+      "textbox_spec": "# Data quality\nEach loaded statement passed section totals and balance reconciliation. Failed statements remain quarantined. Duplicate PDFs and duplicate transaction appearances are shown separately."
      },
      "position": {
       "x": 0,
@@ -2977,44 +1687,32 @@
     },
     {
      "widget": {
-      "name": "t_status",
+      "name": "card_status_table",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_status",
+         "datasetName": "card_status",
          "fields": [
           {
            "name": "file",
            "expression": "`file`"
           },
           {
-           "name": "statement_kind",
-           "expression": "`statement_kind`"
-          },
-          {
-           "name": "period_from",
-           "expression": "`period_from`"
-          },
-          {
            "name": "period_to",
            "expression": "`period_to`"
-          },
-          {
-           "name": "txn_count",
-           "expression": "`txn_count`"
-          },
-          {
-           "name": "duplicate_lines",
-           "expression": "`duplicate_lines`"
           },
           {
            "name": "reconciled",
            "expression": "`reconciled`"
           },
           {
-           "name": "ingested_at",
-           "expression": "`ingested_at`"
+           "name": "txn_count",
+           "expression": "`txn_count`"
+          },
+          {
+           "name": "errors",
+           "expression": "`errors`"
           }
          ],
          "disaggregated": true
@@ -3032,7 +1730,7 @@
        "paginationSize": "default",
        "frame": {
         "showTitle": true,
-        "title": "Statement reconciliation (weekly and monthly)"
+        "title": "Statement status and quarantine"
        },
        "encodings": {
         "columns": [
@@ -3064,60 +1762,6 @@
           "displayName": "Statement"
          },
          {
-          "fieldName": "statement_kind",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Kind",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Kind"
-         },
-         {
-          "fieldName": "period_from",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 2,
-          "title": "From",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "From"
-         },
-         {
           "fieldName": "period_to",
           "booleanValues": [
            "false",
@@ -3134,69 +1778,15 @@
           "type": "string",
           "displayAs": "string",
           "visible": true,
-          "order": 3,
-          "title": "To",
+          "order": 1,
+          "title": "Period end",
           "allowSearch": false,
           "alignContent": "left",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "To"
-         },
-         {
-          "fieldName": "txn_count",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "integer",
-          "displayAs": "number",
-          "visible": true,
-          "order": 4,
-          "title": "Payments",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Payments"
-         },
-         {
-          "fieldName": "duplicate_lines",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "integer",
-          "displayAs": "number",
-          "visible": true,
-          "order": 5,
-          "title": "Already loaded",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Already loaded"
+          "displayName": "Period end"
          },
          {
           "fieldName": "reconciled",
@@ -3215,7 +1805,7 @@
           "type": "string",
           "displayAs": "string",
           "visible": true,
-          "order": 6,
+          "order": 2,
           "title": "Reconciled",
           "allowSearch": false,
           "alignContent": "left",
@@ -3226,7 +1816,34 @@
           "displayName": "Reconciled"
          },
          {
-          "fieldName": "ingested_at",
+          "fieldName": "txn_count",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "integer",
+          "displayAs": "number",
+          "visible": true,
+          "order": 3,
+          "title": "Transactions",
+          "allowSearch": false,
+          "alignContent": "right",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Transactions"
+         },
+         {
+          "fieldName": "errors",
           "booleanValues": [
            "false",
            "true"
@@ -3242,15 +1859,15 @@
           "type": "string",
           "displayAs": "string",
           "visible": true,
-          "order": 7,
-          "title": "Loaded at",
+          "order": 4,
+          "title": "Validation errors",
           "allowSearch": false,
           "alignContent": "left",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Loaded at"
+          "displayName": "Validation errors"
          }
         ]
        }
@@ -3265,20 +1882,16 @@
     },
     {
      "widget": {
-      "name": "t_dups",
+      "name": "card_dups_table",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_dups",
+         "datasetName": "card_dups",
          "fields": [
           {
            "name": "file",
            "expression": "`file`"
-          },
-          {
-           "name": "statement_kind",
-           "expression": "`statement_kind`"
           },
           {
            "name": "duplicate_of",
@@ -3304,7 +1917,7 @@
        "paginationSize": "default",
        "frame": {
         "showTitle": true,
-        "title": "Duplicate line items (weekly and monthly overlap, counted once)"
+        "title": "Duplicate transaction appearances"
        },
        "encodings": {
         "columns": [
@@ -3336,33 +1949,6 @@
           "displayName": "Statement"
          },
          {
-          "fieldName": "statement_kind",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Kind",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Kind"
-         },
-         {
           "fieldName": "duplicate_of",
           "booleanValues": [
            "false",
@@ -3379,15 +1965,15 @@
           "type": "string",
           "displayAs": "string",
           "visible": true,
-          "order": 2,
-          "title": "Line items already loaded from",
+          "order": 1,
+          "title": "First appearance",
           "allowSearch": false,
           "alignContent": "left",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Line items already loaded from"
+          "displayName": "First appearance"
          },
          {
           "fieldName": "lines",
@@ -3406,15 +1992,15 @@
           "type": "integer",
           "displayAs": "number",
           "visible": true,
-          "order": 3,
-          "title": "Line items",
+          "order": 2,
+          "title": "Duplicate lines",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Line items"
+          "displayName": "Duplicate lines"
          }
         ]
        }
@@ -3424,83 +2010,25 @@
       "x": 0,
       "y": 9,
       "width": 6,
-      "height": 4
-     }
-    },
-    {
-     "widget": {
-      "name": "c_src",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_source",
-         "fields": [
-          {
-           "name": "category_source",
-           "expression": "`category_source`"
-          },
-          {
-           "name": "sum(txns)",
-           "expression": "SUM(`txns`)"
-          }
-         ],
-         "disaggregated": false
-        }
-       }
-      ],
-      "spec": {
-       "version": 3,
-       "widgetType": "bar",
-       "frame": {
-        "showTitle": true,
-        "title": "How payments were labelled"
-       },
-       "encodings": {
-        "x": {
-         "fieldName": "category_source",
-         "scale": {
-          "type": "categorical"
-         },
-         "displayName": "Labelled by"
-        },
-        "y": {
-         "fieldName": "sum(txns)",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "Payments"
-        }
-       }
-      }
-     },
-     "position": {
-      "x": 0,
-      "y": 13,
-      "width": 3,
       "height": 5
      }
     },
     {
      "widget": {
-      "name": "t_src",
+      "name": "card_copies_table",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_source",
+         "datasetName": "card_copies",
          "fields": [
           {
-           "name": "category_source",
-           "expression": "`category_source`"
+           "name": "file_sha256",
+           "expression": "`file_sha256`"
           },
           {
-           "name": "txns",
-           "expression": "`txns`"
-          },
-          {
-           "name": "amount",
-           "expression": "`amount`"
+           "name": "copies",
+           "expression": "`copies`"
           }
          ],
          "disaggregated": true
@@ -3518,12 +2046,12 @@
        "paginationSize": "default",
        "frame": {
         "showTitle": true,
-        "title": "How payments were labelled (the data behind the chart)"
+        "title": "Repeated PDF content"
        },
        "encodings": {
         "columns": [
          {
-          "fieldName": "category_source",
+          "fieldName": "file_sha256",
           "booleanValues": [
            "false",
            "true"
@@ -3540,17 +2068,17 @@
           "displayAs": "string",
           "visible": true,
           "order": 0,
-          "title": "Labelled by",
+          "title": "Content hash",
           "allowSearch": false,
           "alignContent": "left",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Labelled by"
+          "displayName": "Content hash"
          },
          {
-          "fieldName": "txns",
+          "fieldName": "copies",
           "booleanValues": [
            "false",
            "true"
@@ -3567,207 +2095,14 @@
           "displayAs": "number",
           "visible": true,
           "order": 1,
-          "title": "Payments",
+          "title": "Object copies",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Payments"
-         },
-         {
-          "fieldName": "amount",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 2,
-          "title": "Amount (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Amount (INR)",
-          "numberFormat": "0.00"
-         }
-        ]
-       }
-      }
-     },
-     "position": {
-      "x": 3,
-      "y": 13,
-      "width": 3,
-      "height": 5
-     }
-    },
-    {
-     "widget": {
-      "name": "t_review",
-      "queries": [
-       {
-        "name": "main_query",
-        "query": {
-         "datasetName": "ds_review",
-         "fields": [
-          {
-           "name": "category",
-           "expression": "`category`"
-          },
-          {
-           "name": "direction",
-           "expression": "`direction`"
-          },
-          {
-           "name": "txns",
-           "expression": "`txns`"
-          },
-          {
-           "name": "amount",
-           "expression": "`amount`"
-          }
-         ],
-         "disaggregated": true
-        }
-       }
-      ],
-      "spec": {
-       "version": 1,
-       "widgetType": "table",
-       "allowHTMLByDefault": false,
-       "itemsPerPage": 25,
-       "condensed": true,
-       "withRowNumber": false,
-       "invisibleColumns": [],
-       "paginationSize": "default",
-       "frame": {
-        "showTitle": true,
-        "title": "Unlabelled payments"
-       },
-       "encodings": {
-        "columns": [
-         {
-          "fieldName": "category",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 0,
-          "title": "Status",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Status"
-         },
-         {
-          "fieldName": "direction",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
-          "order": 1,
-          "title": "Direction",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Direction"
-         },
-         {
-          "fieldName": "txns",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "integer",
-          "displayAs": "number",
-          "visible": true,
-          "order": 2,
-          "title": "Payments",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Payments"
-         },
-         {
-          "fieldName": "amount",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "float",
-          "displayAs": "number",
-          "visible": true,
-          "order": 3,
-          "title": "Amount (INR)",
-          "allowSearch": false,
-          "alignContent": "right",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Amount (INR)",
-          "numberFormat": "0.00"
+          "displayName": "Object copies"
          }
         ]
        }
@@ -3775,20 +2110,24 @@
      },
      "position": {
       "x": 0,
-      "y": 18,
+      "y": 14,
       "width": 6,
-      "height": 4
+      "height": 5
      }
     },
     {
      "widget": {
-      "name": "t_queue",
+      "name": "card_review_table",
       "queries": [
        {
         "name": "main_query",
         "query": {
-         "datasetName": "ds_queue",
+         "datasetName": "card_review",
          "fields": [
+          {
+           "name": "account_id",
+           "expression": "`account_id`"
+          },
           {
            "name": "category",
            "expression": "`category`"
@@ -3796,10 +2135,6 @@
           {
            "name": "counterparty_clean",
            "expression": "`counterparty_clean`"
-          },
-          {
-           "name": "direction",
-           "expression": "`direction`"
           },
           {
            "name": "txns",
@@ -3834,7 +2169,7 @@
        "encodings": {
         "columns": [
          {
-          "fieldName": "category",
+          "fieldName": "account_id",
           "booleanValues": [
            "false",
            "true"
@@ -3851,6 +2186,33 @@
           "displayAs": "string",
           "visible": true,
           "order": 0,
+          "title": "Account key",
+          "allowSearch": false,
+          "alignContent": "left",
+          "allowHTML": false,
+          "highlightLinks": false,
+          "useMonospaceFont": false,
+          "preserveWhitespace": false,
+          "displayName": "Account key"
+         },
+         {
+          "fieldName": "category",
+          "booleanValues": [
+           "false",
+           "true"
+          ],
+          "imageUrlTemplate": "{{ @ }}",
+          "imageTitleTemplate": "{{ @ }}",
+          "imageWidth": "",
+          "imageHeight": "",
+          "linkUrlTemplate": "{{ @ }}",
+          "linkTextTemplate": "{{ @ }}",
+          "linkTitleTemplate": "{{ @ }}",
+          "linkOpenInNewTab": true,
+          "type": "string",
+          "displayAs": "string",
+          "visible": true,
+          "order": 1,
           "title": "Status",
           "allowSearch": false,
           "alignContent": "left",
@@ -3877,42 +2239,15 @@
           "type": "string",
           "displayAs": "string",
           "visible": true,
-          "order": 1,
-          "title": "Payee",
-          "allowSearch": false,
-          "alignContent": "left",
-          "allowHTML": false,
-          "highlightLinks": false,
-          "useMonospaceFont": false,
-          "preserveWhitespace": false,
-          "displayName": "Payee"
-         },
-         {
-          "fieldName": "direction",
-          "booleanValues": [
-           "false",
-           "true"
-          ],
-          "imageUrlTemplate": "{{ @ }}",
-          "imageTitleTemplate": "{{ @ }}",
-          "imageWidth": "",
-          "imageHeight": "",
-          "linkUrlTemplate": "{{ @ }}",
-          "linkTextTemplate": "{{ @ }}",
-          "linkTitleTemplate": "{{ @ }}",
-          "linkOpenInNewTab": true,
-          "type": "string",
-          "displayAs": "string",
-          "visible": true,
           "order": 2,
-          "title": "Direction",
+          "title": "Merchant",
           "allowSearch": false,
           "alignContent": "left",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Direction"
+          "displayName": "Merchant"
          },
          {
           "fieldName": "txns",
@@ -3932,14 +2267,14 @@
           "displayAs": "number",
           "visible": true,
           "order": 3,
-          "title": "Payments",
+          "title": "Transactions",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Payments"
+          "displayName": "Transactions"
          },
          {
           "fieldName": "total",
@@ -3959,14 +2294,14 @@
           "displayAs": "number",
           "visible": true,
           "order": 4,
-          "title": "Total (INR)",
+          "title": "Total (USD)",
           "allowSearch": false,
           "alignContent": "right",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Total (INR)",
+          "displayName": "Total (USD)",
           "numberFormat": "0.00"
          },
          {
@@ -3987,14 +2322,14 @@
           "displayAs": "string",
           "visible": true,
           "order": 5,
-          "title": "Why",
+          "title": "Reason",
           "allowSearch": false,
           "alignContent": "left",
           "allowHTML": false,
           "highlightLinks": false,
           "useMonospaceFont": false,
           "preserveWhitespace": false,
-          "displayName": "Why"
+          "displayName": "Reason"
          }
         ]
        }
@@ -4002,7 +2337,7 @@
      },
      "position": {
       "x": 0,
-      "y": 22,
+      "y": 19,
       "width": 6,
       "height": 8
      }

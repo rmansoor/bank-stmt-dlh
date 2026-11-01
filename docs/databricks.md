@@ -3,6 +3,25 @@
 The same parser runs inside a scheduled Databricks job. Raw PDFs stay in your bucket; each one is downloaded to
 temporary disk, parsed, reconciled and dropped. Nothing is kept in Databricks but the tables.
 
+## Wells Fargo credit card mode
+
+This checkout sets `lakehouse_account_type: credit-card` in `config/settings.yaml`.
+Use a dedicated catalog for USD cards. For HDFC, choose `bank` and a separate INR catalog.
+A catalog containing transactions of the other type/currency is rejected. Existing legacy
+columns are migrated as HDFC/INR; do not switch a populated bank catalog to card mode.
+
+Credit card mode preserves account identity, activity type, currency, nullable transaction balances,
+and occurrence identity in bronze/silver/gold. Every activity section and statement balance must reconcile.
+The USD dashboard has Overview, Spending, Transactions (date filter) and Data quality. Balances are
+amounts owed as of each account's latest statement, not live cash balances. Payments are transfers,
+refunds offset spending, and advances and explicitly labeled balance transfers are excluded from spending.
+There is no card runway, founder ledger or invented daily running balance. Unclassified merchants
+remain in the review queue. Card rows do not call Jev. Account identity uses the printed last four digits;
+process different cards sharing those digits in separate catalogs.
+
+Weekly **bank cash email is unavailable in credit card mode**: its scheduled job is paused, and manual
+job/notebook execution is blocked before mail or FX access. Card email is a separate future feature. Job failure emails are opt-in through `ALERT_EMAIL`; blank disables them.
+
 ## What you need
 
 - A Databricks workspace. Free Edition with serverless compute is enough.
@@ -11,24 +30,66 @@ temporary disk, parsed, reconciled and dropped. Nothing is kept in Databricks bu
 
 ## One-time setup
 
-1. Fill the `DATABRICKS_*` and `MINIO_*` values in `.env`. In `config/settings.yaml` set `statement_source: minio`,
+1. Copy `.env.sample` to `.env` if needed (never overwrite configured credentials). Fill the `DATABRICKS_*` and `MINIO_*` values in `.env`. In `config/settings.yaml` set `statement_source: minio`,
    `minio_bucket` and `catalog`.
 2. Create the catalog by hand in the SQL editor: `CREATE CATALOG bank_stmt_dlh;` (or your name).
 3. `make db-init` creates the `bronze`, `silver` and `gold` schemas.
 4. `make secrets` copies the PDF password, the Jev key and the bucket keys from `.env` into the secret scope.
    Groups: `core`, `minio`, `sp`, `mail`. An empty group that the configured source does not need is skipped.
+   Card mode skips mail; an empty PDF password and AI key are optional.
 5. `make deploy` uploads `src/`, `config/`, `databricks/sql/`, `assets/` and the notebooks to
    `/Users/<DATABRICKS_USER>/bank-stmt-dlh`. The repo is the source of truth; do not edit notebooks online.
 6. `make etl` creates or updates the two jobs and starts the ETL once.
 7. `make dashboard` generates the AI/BI dashboard definition from `databricks/dashboards/build_dashboard.py`
    and publishes it.
 
+## Verify setup before deployment
+
+Fill these local `.env` fields; do not paste keys into chat:
+
+- `DATABRICKS_HOST`: your workspace URL.
+- `DATABRICKS_TOKEN`: a workspace token permitted to deploy code, manage jobs and access the catalog.
+- `DATABRICKS_HTTP_PATH`: the SQL warehouse connection path.
+- `DATABRICKS_USER`: your workspace login.
+- `DATABRICKS_CATALOG`: must match `catalog` in `config/settings.yaml`.
+- `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`: your S3-compatible endpoint and bucket-scoped key.
+- `MINIO_BUCKET`: must match `minio_bucket` in `config/settings.yaml`.
+- Set `minio_region` in `config/settings.yaml` to the AWS bucket region or your provider’s signing region.
+  The `MINIO_*` names are shared by AWS S3, MinIO and R2; a separate MinIO server is not required.
+- `STATEMENTS_DIR`: local PDF folder (`samples/mystatement` works; `data/raw/wells-fargo` is preferred).
+
+`make cloud-check` checks that required values are present without contacting services or printing secrets.
+It does not verify permissions or network access. Create the chosen catalog in the workspace SQL editor,
+then use the one-time setup commands. The first ingestion run adds metadata columns to existing Delta
+tables. On a fresh catalog there are no historical rows to migrate.
+
+```bash
+make cloud-check
+make db-init
+make secrets
+make deploy
+make upload
+make etl
+make dashboard
+```
+
+Inspect the ETL run status before publishing the dashboard. A successful HTTP response starting a job
+is not proof that ingestion completed. Check that silver has the expected unique transaction count,
+quarantine is empty, and gold card totals match the statement summaries. `make upload` starts a run
+only if a job ID already exists; otherwise `make etl` creates the jobs and starts the first run.
+`make dashboard-build` generates the JSON locally without publishing it. Dashboard publication also
+rebuilds the definition from the configured account mode, so it cannot publish stale bank widgets.
+
+Local validation can run without credentials. The regular `make test` suite skips Spark integration tests
+if PySpark is unavailable. To execute those tests, install PySpark 4.0.x in the test environment, use Java
+17+, and run `make test` with `SPARK_LOCAL_IP=127.0.0.1`.
+
 ## Daily loop
 
 ```bash
 make upload            # STATEMENTS_DIR -> bucket, then start the job (WEEKLY=1 for weekly statements)
 make run               # start the ETL job now
-make weekly-report     # run the weekly cash report now (WEEK_END=2026-10-18 FORCE=1 MODE=dry)
+make weekly-report     # bank mode only; run the weekly cash report now (WEEK_END=2026-10-18 FORCE=1 MODE=dry)
 make deploy            # after a code or config change, then make run
 ```
 

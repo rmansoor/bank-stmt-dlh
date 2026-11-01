@@ -4,8 +4,8 @@
     python scripts/dbx_secrets.py mail            # one group (core | sp | minio | mail)
     python scripts/dbx_secrets.py SP_TENANT_ID    # only the named .env keys
 
-An empty value is skipped. It counts as a failure only when its group is needed: core and mail always, and the
-statement source named in settings.yaml (sp or minio).
+An empty PDF password and AI key are optional. Mail is skipped in credit card mode.
+The configured statement source keys are required. Creates the scope with owner-only defaults if missing.
 
 Secret key = the .env name in lower case (SP_CLIENT_ID -> sp_client_id).
 """
@@ -30,20 +30,27 @@ GROUPS = {
     "minio": ["MINIO_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY"],
     "mail": ["MAIL_CLIENT_ID", "MAIL_CLIENT_SECRET", "MAIL_SENDER", "MAIL_REPLY_TO", "MAIL_RECIPIENTS", "MAIL_DRY_RUN_TO", "MAIL_MODE"],
 }
-OPTIONAL = {"MAIL_REPLY_TO", "TYPESAFE_API_KEY"}   # may stay empty
+OPTIONAL = {"MAIL_REPLY_TO", "TYPESAFE_API_KEY", "PDF_PASSWORD"}   # may stay empty
 # the statement source that is not configured may be left empty; the configured one must be filled
-REQUIRED_GROUPS = {"core", "mail", "sp" if S["statement_source"] == "sharepoint" else "minio"}
+REQUIRED_GROUPS = {"core", "sp" if S["statement_source"] == "sharepoint" else "minio"}
+if S["lakehouse_account_type"] == "bank":
+    REQUIRED_GROUPS.add("mail")
 
 
 def main(keys: list[str]) -> int:
     load_dotenv(ROOT / ".env")
-    env = dotenv_values(ROOT / ".env")
+    env = {**dotenv_values(ROOT / ".env"), **os.environ}
     host = os.environ["DATABRICKS_HOST"].strip().rstrip("/")
     host = host if host.startswith("http") else "https://" + host
     h = {"Authorization": f"Bearer {os.environ['DATABRICKS_TOKEN']}"}
     bad = 0
-    groups = [g for g in keys if g in GROUPS] or list(GROUPS)
+    groups = [g for g in keys if g in GROUPS] or [g for g in GROUPS if g != "mail" or S["lakehouse_account_type"] == "bank"]
     wanted = [k for k in keys if k not in GROUPS] or [k for g in groups for k in GROUPS[g]]
+    # Owner-only scope creation; leave an existing scope and its ACLs unchanged.
+    scope = httpx.post(f"{host}/api/2.0/secrets/scopes/create", headers=h, json={"scope": SCOPE}, timeout=30)
+    if scope.status_code != 200 and scope.json().get("error_code") != "RESOURCE_ALREADY_EXISTS":
+        print("secret scope creation FAILED", scope.status_code)
+        return 1
     for k in wanted:
         v = env.get(k, "")
         if not v:

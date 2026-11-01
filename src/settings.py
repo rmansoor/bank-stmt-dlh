@@ -12,8 +12,10 @@ import yaml
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
 DEFAULTS = {
+    "lakehouse_account_type": "bank",
     "catalog": "bank_stmt_dlh",
     "secret_scope": "bank-stmt-dlh",
+    "minio_region": "us-east-1",
     "minio_bucket": "bank-stmt-dlh",
     "minio_prefix": "statements/",
     "statement_source": "sharepoint",

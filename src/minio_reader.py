@@ -16,13 +16,13 @@ from botocore.config import Config
 T = TypeVar("T")
 
 
-def client(endpoint: str, access_key: str, secret_key: str):
+def client(endpoint: str, access_key: str, secret_key: str, region: str = "us-east-1"):
     return boto3.client(
         "s3",
         endpoint_url=endpoint,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
-        region_name="us-east-1",
+        region_name=region,
         config=Config(s3={"addressing_style": "path"}, connect_timeout=15, read_timeout=60, retries={"max_attempts": 1}),
     )
 

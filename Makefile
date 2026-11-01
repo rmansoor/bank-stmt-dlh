@@ -1,7 +1,9 @@
-.PHONY: help setup extract gold report test notebook db-init minio-init upload deploy secrets run weekly-report etl dashboard publish clean
+.PHONY: help setup extract gold report test cloud-check dashboard-build notebook db-init minio-init upload deploy secrets run weekly-report etl dashboard publish clean
 
 help:
 	@echo "Targets:"
+	@echo "  cloud-check - check required cloud configuration locally (no network)"
+	@echo "  dashboard-build - generate the dashboard JSON locally"
 	@echo "  setup     - install dependencies (uv sync)"
 	@echo "  extract   - parse statement PDFs into silver parquet, reconcile each one"
 	@echo "  gold      - categorize, detect recurring, build data/bank.duckdb (uses Jev if TYPESAFE_API_KEY is set)"
@@ -18,6 +20,12 @@ help:
 	@echo "  publish   - export the public copy of the source to PUBLIC_REPO_DIR (maintainers; PUSH=1 to push)"
 	@echo "  notebook  - open Jupyter"
 	@echo "  clean     - remove the virtualenv and generated data"
+
+cloud-check:
+	.venv/bin/python scripts/cloud_preflight.py
+
+dashboard-build:
+	.venv/bin/python databricks/dashboards/build_dashboard.py
 
 setup:
 	uv sync

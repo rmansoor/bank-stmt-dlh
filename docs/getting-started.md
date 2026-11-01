@@ -53,7 +53,7 @@ Direction comes from the running balance, never from a column. The period comes 
 line and the totals from the `STATEMENT SUMMARY` block. Another bank is one parser module that returns the same
 columns as `src/extract.py`.
 
-## Wells Fargo credit cards (local only)
+## Wells Fargo credit cards
 
 The local parser also supports text-based Wells Fargo credit card statements with a
 `Statement Period` and `Account Summary`. Scans and other layouts are rejected.
@@ -83,4 +83,4 @@ Card reports do not generate cash runway, recurring obligations or weekly emails
 Use separate input folders for bank accounts and cards and for different currencies. Each extraction
 replaces the local ledger; it does not append to previous runs. Account identity uses a hash of the
 issuer, account type and printed last four digits; cards sharing those digits must be processed separately.
-Databricks ingestion, dashboards and email jobs remain designed for HDFC current accounts.
+For cloud ingestion and the USD dashboard, see [Databricks setup](databricks.md). Weekly cash email remains bank-only.

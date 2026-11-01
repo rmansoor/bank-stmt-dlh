@@ -51,10 +51,14 @@ the change in running balance. Any mismatch, including a balance break between t
 
 ## Local Wells Fargo credit cards
 
-Local statements and transactions include `account_type`, `currency` and an opaque `account_id`.
+Local and cloud statements and transactions include `account_type`, `currency` and an opaque `account_id`.
 Card transactions add `activity_type`, `identity_occurrence`, and a nullable `balance` (the PDF has no
 running transaction balance). `value_date` is the posting date; `txn_date` is the purchase/activity date.
 Card identity uses account, currency, both dates, reference, amount, direction, activity type and
 occurrence number. This preserves repeated transactions and deduplicates repeated statement copies.
 Card `credit` rows reduce debt; `debit` rows increase it. Statement closing balances are amounts owed,
-not cash available. Local card views replace bank cash-flow views; cloud schemas are unchanged.
+not cash available. Local card views replace bank cash-flow views. Cloud bronze/silver/gold retain card metadata through replay;
+legacy rows are backfilled as bank/INR. Cloud bank cash views filter to bank/INR, and separate `card_activity`,
+`card_monthly`, `card_statement_balances`, `card_kpis`, and `card_spend_by_category` views serve USD cards.
+`card_kpis` sums only the latest statement per account; it also exposes oldest/latest account statement dates.
+Cloud review rows retain account and currency. Cloud recurring series are empty for cards.

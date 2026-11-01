@@ -26,10 +26,12 @@ def main() -> int:
     h = {"Authorization": f"Bearer {os.environ['DATABRICKS_TOKEN']}"}
     USER = os.environ["DATABRICKS_USER"]
     S = settings.load()
-    NAME = f"{S['company_name']} Finance"
+    NAME = f"{S['company_name']} " + ("Credit Cards" if S["lakehouse_account_type"] == "credit-card" else "Finance")
     catalog = os.environ.get("DATABRICKS_CATALOG") or S["catalog"]
     wh = os.environ["DATABRICKS_HTTP_PATH"].rstrip("/").split("/")[-1]
-    body = (ROOT / "databricks" / "dashboards" / "bank-stmt-dlh.lvdash.json").read_text().replace("__CATALOG__", catalog).replace("__COMPANY__", S["company_name"])
+    # Build from the selected mode at publish time, avoiding a stale generated bank dashboard.
+    from build_dashboard import build
+    body = json.dumps(build(S["lakehouse_account_type"])).replace("__CATALOG__", catalog).replace("__COMPANY__", S["company_name"])
     json.loads(body)
     api = lambda m, p, **kw: httpx.request(m, f"{host}{p}", headers=h, timeout=90, **kw)
     existing = None
@@ -51,7 +53,7 @@ def main() -> int:
     print(action, "| publish:", p.status_code, p.text[:200] if p.status_code != 200 else "")
     print(f"draft:     {host}/dashboardsv3/{did}")
     print(f"published: {host}/dashboardsv3/{did}/published")
-    return 0
+    return 0 if p.status_code == 200 else 1
 
 
 if __name__ == "__main__":

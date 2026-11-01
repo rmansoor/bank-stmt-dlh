@@ -8,6 +8,7 @@ from __future__ import annotations
 import pandas as pd
 
 import normalize
+from lakehouse import metadata
 
 APPEARANCE_COLS = ["txn_id", "file_sha256", "source_file", "statement_kind", "seq", "narration", "first_seen_at",
                    "is_duplicate", "duplicate_of_file"]
@@ -15,7 +16,7 @@ APPEARANCE_COLS = ["txn_id", "file_sha256", "source_file", "statement_kind", "se
 
 def prepare(raw: pd.DataFrame, source_file: str, file_sha256: str, statement_kind: str) -> pd.DataFrame:
     """Parsed lines of ONE statement (dd/mm/yy strings, numeric amounts) -> enriched silver rows."""
-    df = raw.copy()
+    df = metadata(raw)
     df["txn_date"] = pd.to_datetime(df["txn_date"], format="%d/%m/%y")
     df["value_date"] = pd.to_datetime(df["value_date"], format="%d/%m/%y")
     df["amount"], df["balance"] = df["amount"].astype(float), df["balance"].astype(float)

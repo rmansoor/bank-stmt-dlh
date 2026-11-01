@@ -34,7 +34,7 @@ def minio_client():
         endpoint_url=os.environ["MINIO_ENDPOINT"],
         aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
         aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
-        region_name="us-east-1",
+        region_name=settings.load()["minio_region"],
         config=Config(s3={"addressing_style": "path"}, connect_timeout=10, read_timeout=60, retries={"max_attempts": 2}),
     )
 

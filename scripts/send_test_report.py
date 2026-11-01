@@ -31,6 +31,8 @@ def nice(slug: str) -> str:
 
 
 def build(week_end: date) -> wr.Report:
+    from lakehouse import require_bank_report
+    require_bank_report(settings.load()["lakehouse_account_type"])
     start = week_end - timedelta(days=6)
     q = lambda sql: query(sql)
     row = lambda r, k: float(r[0][k]) if r and r[0][k] is not None else 0.0

@@ -35,6 +35,11 @@ sys.path.insert(0, f"{BASE}/src")
 import settings as _settings
 S = _settings.load()
 CAT, SCOPE = S["catalog"], S["secret_scope"]
+import lakehouse
+lakehouse.require_bank_report(S["lakehouse_account_type"])
+# Also guard direct notebook runs against a catalog accidentally pointed at cards.
+if spark.table(f"{CAT}.silver.transactions").where("account_type <> 'bank' OR currency <> 'INR'").limit(1).count():
+    raise ValueError("Weekly cash email cannot read credit card or non-INR transactions")
 
 import pandas as pd
 import yaml
